@@ -59,6 +59,11 @@ def handle_existing(exp_dir):
         return True
     return False
 
+def abs_results_path():
+    # get the top level repo directory
+    topdir = exec_output(['git', 'rev-parse', '--show-toplevel']).strip()
+
+    return os.path.join(topdir, RESULTS_PATH)
 
 def run_exp(branch, cmd, descr):
     # switch to this branch
@@ -73,12 +78,14 @@ def run_exp(branch, cmd, descr):
     # compute a hash unique to this experiment
     exp_hsh = sha1(hsh + cmd)
 
+    resultsdir = abs_results_path()
+
     # create the results directory if necessary
-    if not os.path.isdir(RESULTS_PATH):
-        os.mkdir(RESULTS_PATH)
+    if not os.path.isdir(resultsdir):
+        os.mkdir(resultsdir)
 
     # check if this experiment has been run
-    exp_path = os.path.join(RESULTS_PATH, exp_hsh)
+    exp_path = os.path.join(resultsdir, exp_hsh)
     if handle_existing(exp_hsh):
         sys.exit(1)
 
@@ -86,7 +93,7 @@ def run_exp(branch, cmd, descr):
     os.mkdir(exp_path)
 
     # save the experimental description
-    f = open(os.path.join(RESULTS_PATH, exp_hsh, DESCR_FILE), 'w')
+    f = open(os.path.join(exp_path, DESCR_FILE), 'w')
     f.write(hsh + '\n')
     f.write(cmd + '\n')
     f.write(time.ctime() + '\n')
@@ -102,7 +109,7 @@ def run_exp(branch, cmd, descr):
     
 def read_descrs():
     exps = {}
-    exp_dirs = os.listdir(RESULTS_PATH)
+    exp_dirs = os.listdir(abs_results_path())
     for exp_dir in exp_dirs:
         try:
             exps[exp_dir] = read_descr(exp_dir)
