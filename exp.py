@@ -51,8 +51,14 @@ def read_descr(exp_dir):
     f.close()
     return (hsh, cmd, date, descr)
 
+def abs_results_path():
+    # get the top level repo directory
+    topdir = exec_output(['git', 'rev-parse', '--show-toplevel']).strip()
+
+    return os.path.join(topdir, RESULTS_PATH)
+
 def handle_existing(exp_dir):
-    if os.path.isdir(os.path.join(RESULTS_PATH, exp_dir)):
+    if os.path.isdir(os.path.join(abs_results_path(), exp_dir)):
         try:
             date = read_descr(exp_dir)[2]
         except:
@@ -61,16 +67,10 @@ def handle_existing(exp_dir):
                    ' this script that must be fixed to continue.')
             return True
 
-        print ('This experiment (' + trunc(exp_dir, 6) + ') appears\n'
+        print ('This experiment (' + trunc(exp_dir, 6) + ') appears'
                ' to have already been run\n at ' + date)
         return True
     return False
-
-def abs_results_path():
-    # get the top level repo directory
-    topdir = exec_output(['git', 'rev-parse', '--show-toplevel']).strip()
-
-    return os.path.join(topdir, RESULTS_PATH)
 
 def run_exp(branch, cmd, descr):
     # switch to this branch
