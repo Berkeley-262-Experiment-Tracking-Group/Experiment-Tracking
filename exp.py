@@ -41,8 +41,14 @@ def trunc(s, n):
 def sha1(s):
     return hashlib.sha1(s).hexdigest()
 
+def abs_results_path():
+    # get the top level repo directory
+    topdir = exec_output(['git', 'rev-parse', '--show-toplevel']).strip()
+
+    return os.path.join(topdir, RESULTS_PATH)
+
 def read_descr(exp_dir):
-    f = open(os.path.join(RESULTS_PATH, exp_dir, DESCR_FILE), 'r')
+    f = open(os.path.join(abs_results_path(), exp_dir, DESCR_FILE), 'r')
     hsh = f.readline().strip()
     cmd = f.readline().strip()
     date = f.readline().strip()
@@ -50,12 +56,6 @@ def read_descr(exp_dir):
     descr = f.readline().strip()
     f.close()
     return (hsh, cmd, date, descr)
-
-def abs_results_path():
-    # get the top level repo directory
-    topdir = exec_output(['git', 'rev-parse', '--show-toplevel']).strip()
-
-    return os.path.join(topdir, RESULTS_PATH)
 
 def handle_existing(exp_dir):
     if os.path.isdir(os.path.join(abs_results_path(), exp_dir)):
