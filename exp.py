@@ -32,6 +32,12 @@ def exec_shell(cmd):
 def exec_output(args):
     return subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]
 
+def trunc(s, n):
+    if len(s) <= n:
+        return s
+    else:
+        return s[:n] + '...'
+
 def sha1(s):
     return hashlib.sha1(s).hexdigest()
 
@@ -55,7 +61,8 @@ def handle_existing(exp_dir):
                    ' this script that must be fixed to continue.')
             return True
 
-        print 'This experiment appears to have already been run at ' + date
+        print ('This experiment (' + trunc(exp_dir, 6) + ') appears\n'
+               ' to have already been run\n at ' + date)
         return True
     return False
 
@@ -117,12 +124,6 @@ def read_descrs():
             print 'Error reading description for ' + exp_dir
             sys.exit(1)
     return exps
-
-def trunc(s, n):
-    if len(s) <= n:
-        return s
-    else:
-        return s[:n] + '...'
 
 def list_descrs(exps):
     for (exp_hsh, (hsh, cmd, date, descr)) in exps.iteritems():
