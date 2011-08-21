@@ -46,7 +46,7 @@ def read_descr(exp_dir):
     return (hsh, cmd, date, descr)
 
 def handle_existing(exp_dir):
-    if os.path.isdir(os.path.join(RESULTS_DIR, exp_dir)):
+    if os.path.isdir(os.path.join(RESULTS_PATH, exp_dir)):
         try:
             date = read_descr(exp_dir)[2]
         except:
@@ -95,7 +95,7 @@ def run_exp(branch, cmd, descr):
     f.close()
 
     # run the experiment
-    new_cmd = cmd.replace('{}', hsh)
+    new_cmd = cmd.replace('{}', exp_path)
     print 'Running command ' + new_cmd
     sts = exec_shell(new_cmd)
     print 'Command exited with status ' + str(sts)
