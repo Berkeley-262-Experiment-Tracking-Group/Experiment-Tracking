@@ -151,7 +151,7 @@ def run_exp(branch, cmd, descr):
     exp_path = os.path.join(resultsdir, exp_hsh)
 
     # save to a log file
-    new_cmd = new_cmd + ' > {}/log 2>&1'
+    new_cmd = new_cmd + ' | tee {}/log 2>&1'
 
     # substitute in cmd where necessary
     new_cmd = new_cmd.replace('{}', exp_path)
