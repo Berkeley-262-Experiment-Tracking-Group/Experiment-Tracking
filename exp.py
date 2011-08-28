@@ -87,11 +87,12 @@ def find_by_descr(exps, descr):
     matches = [exp_hsh for exp_hsh in exps.iterkeys()
                     if exps[exp_hsh]['description'] == descr]
 
-    if len(matches) > 1:
-        print "Warning: found multiple matches for %s" % descr
 
     # note: descending sort
     matches.sort(lambda x, y: cmp(exps[y]['date'], exps[x]['date']))
+    if len(matches) > 1:
+        print 'Warning: found multiple matches for %s' % descr
+        print 'Using latest (%s)' % time.ctime(exps[matches[0]]['date'])
 
     return matches[0]
 
