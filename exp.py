@@ -14,7 +14,9 @@
 
 import subprocess
 import sys
+import argparse
 import os, os.path
+import shutil
 import hashlib
 import time
 import re
@@ -90,11 +92,8 @@ def find_by_descr(exps, descr):
 
     # note: descending sort
     matches.sort(lambda x, y: cmp(exps[y]['date'], exps[x]['date']))
-    if len(matches) > 1:
-        print 'Warning: found multiple matches for %s' % descr
-        print 'Using latest (%s)' % time.ctime(exps[matches[0]]['date'])
 
-    return matches[0]
+    return matches
 
 def expand_command(cmd):
     """Replace special sequences in cmd with appropriate paths specifying
@@ -112,15 +111,24 @@ def expand_command(cmd):
             # let this be handled in the next pass
             return '{}'
         else:
-            exp_hsh = find_by_descr(exps, m.group(1))
-            deps.append(exp_hsh)
-            return os.path.join(abs_root_path(), RESULTS_PATH, exp_hsh)
+            exp_hshs = find_by_descr(exps, m.group(1))
+
+            if len(exp_hshs) == 0:
+                print 'Error: could not match %s' % m.group(1)
+                exit(1)
+
+            if len(exp_hshs) > 1:
+                print 'Warning: found multiple matches for %s' % m.group(1)
+                print 'Using latest (%s)' % time.ctime(exps[exp_hshs[0]]['date'])
+
+            deps.append(exp_hshs[0])
+            return os.path.join(abs_root_path(), RESULTS_PATH, exp_hshs[0])
 
     return (re.sub('{(.*?)}', expander, cmd), deps)
 
-def run_exp(branch, cmd, descr):
+def run_exp(args):
     # switch to this branch
-    sts = exec_cmd(['git', 'checkout', '-f', branch])
+    sts = exec_cmd(['git', 'checkout', '-f', args.commit])
     if sts != 0:
         print 'Attempt to switch branches failed with error ' + str(sts)
         sys.exit(1)
@@ -129,14 +137,14 @@ def run_exp(branch, cmd, descr):
     hsh = exec_output(['git', 'rev-parse', 'HEAD']).strip()
 
     # compute a hash unique to this experiment
-    exp_hsh = sha1(hsh + cmd)
+    exp_hsh = sha1(hsh + args.command)
 
     # command expansion must be done in two phases:
     #  first, inputs are expanded and indentified
     #  then, the experimental hash is computed and substituted
 
     # lookup and insert necessary inputs
-    new_cmd, deps = expand_command(cmd)
+    new_cmd, deps = expand_command(args.command)
 
     rootdir = abs_root_path()
     resultsdir = os.path.join(rootdir, RESULTS_PATH)
@@ -146,7 +154,7 @@ def run_exp(branch, cmd, descr):
     # this encoding is not totally fool-proof; maybe look to git
     #  for ideas?
     exp_hsh = sha1(hsh + ''.join(deps) + str(len(working_dir)) +
-                   working_dir + str(len(cmd)) + cmd)
+                   working_dir + str(len(args.command)) + args.command)
 
     exp_path = os.path.join(resultsdir, exp_hsh)
 
@@ -165,13 +173,31 @@ def run_exp(branch, cmd, descr):
     if handle_existing(exp_hsh):
         sys.exit(1)
 
-    # create the results directory for this experiment
-    os.mkdir(exp_path)
+    # the experimental description
+    info = {'commit': hsh, 'command': args.command, 'date': time.time(),
+            'description': args.description,
+            'working_dir': working_dir, 'deps': deps}
+
+    # import existing results if requested
+    # awkward name conflict here
+    if vars(args)['import']:
+        exps = read_descrs()
+        matches = find_by_descr(exps, args.description)
+
+        if len(matches) == 0:
+            print 'Could not find matching experiment to import from'
+            exit(1)
+
+        info['import'] = matches[0]
+        import_dir = os.path.join(abs_root_path(), RESULTS_PATH, matches[0])
+
+        shutil.copytree(import_dir, exp_path)
+    else:
+        # create the results directory for this experiment
+        # (should only do this once we know we can at least write info file)
+        os.mkdir(exp_path)
 
     # save the experimental description
-    info = {'commit': hsh, 'command': cmd, 'date': time.time(),
-            'description': descr,
-            'working_dir': working_dir, 'deps': deps}
     save_descr(os.path.join(exp_path, DESCR_FILE), info)
 
     # run the experiment
@@ -179,6 +205,7 @@ def run_exp(branch, cmd, descr):
     sts = exec_shell(new_cmd)
     print 'Command exited with status ' + str(sts)
     info['exit_status'] = sts
+    info['date_end'] = time.time()
     save_descr(os.path.join(exp_path, DESCR_FILE), info)
     
 def read_descrs():
@@ -205,18 +232,18 @@ def list_descrs(exps):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        print ('Missing command. Currently supported:\n'
-               '\trun\t Run an experiment\n'
-               '\tlist\t List available results\n')
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='Track content created by code')
+    subparsers = parser.add_subparsers()
 
-    if sys.argv[1] == 'run':
-        if len(sys.argv) != 5:
-            print 'Invalid arguments: ./exp.py run branch cmd descr'
-            sys.exit(1)
+    run_parser = subparsers.add_parser('run', help='run an experiment')
+    run_parser.add_argument('--import', action='store_true', help='import results from last run of this experiment')
+    run_parser.add_argument('commit', help='git commit expression indicating code to run')
+    run_parser.add_argument('command', help='command to run')
+    run_parser.add_argument('description', help='unique description of this experiment')
+    run_parser.set_defaults(func=run_exp)
 
-        run_exp(*sys.argv[2:])
+    list_parser = subparsers.add_parser('list', help='list previous experiments')
+    list_parser.set_defaults(func=lambda args: list_descrs(read_descrs()))
 
-    if sys.argv[1] == 'list':
-        list_descrs(read_descrs())
+    args = parser.parse_args()
+    args.func(args)
