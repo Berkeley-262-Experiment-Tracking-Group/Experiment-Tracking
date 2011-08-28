@@ -77,7 +77,7 @@ def handle_existing(exp_dir):
             return True
 
         print ('This experiment (' + trunc(exp_dir, 6) + ') appears'
-               ' to have already been run\n at ' + date)
+               ' to have already been run\n at ' + time.ctime(date))
         return True
     return False
 
@@ -110,7 +110,7 @@ def run_exp(branch, cmd, descr):
     os.mkdir(exp_path)
 
     # save the experimental description
-    info = {'commit': hsh, 'command': cmd, 'date': time.ctime(),
+    info = {'commit': hsh, 'command': cmd, 'date': time.time(),
             'description': descr,
             'working_dir': os.path.relpath(os.getcwd(), rootdir)}
     save_descr(os.path.join(exp_path, DESCR_FILE), info)
@@ -140,7 +140,7 @@ def list_descrs(exps):
         print (trunc(exp_hsh, 6) + '\t'
                + trunc(info['commit'], 6) + '\t'
                + trunc(info['command'], 20) + '\t'
-               + info['date'] + '\t'
+               + time.ctime(info['date']) + '\t'
                + trunc(info['description'], 30))
 
 
