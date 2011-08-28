@@ -17,6 +17,7 @@ import sys
 import os, os.path
 import hashlib
 import time
+import re
 
 RESULTS_PATH = 'results'
 DESCR_FILE = 'descr'
@@ -81,6 +82,41 @@ def handle_existing(exp_dir):
         return True
     return False
 
+def find_by_descr(exps, descr):
+    exps = read_descrs()
+    matches = [exp_hsh for exp_hsh in exps.iterkeys()
+                    if exps[exp_hsh]['description'] == descr]
+
+    if len(matches) > 1:
+        print "Warning: found multiple matches for %s" % descr
+
+    # note: descending sort
+    matches.sort(lambda x, y: cmp(exps[y]['date'], exps[x]['date']))
+
+    return matches[0]
+
+def expand_command(cmd):
+    """Replace special sequences in cmd with appropriate paths specifying
+    output directory and input from other experiments
+
+    Note that the experimental hash itself is not inserted here, since it
+    must be computed from the output of this function"""
+
+    exps = read_descrs()
+
+    deps = []
+
+    def expander(m):
+        if m.group(1) == '':
+            # let this be handled in the next pass
+            return '{}'
+        else:
+            exp_hsh = find_by_descr(exps, m.group(1))
+            deps.append(exp_hsh)
+            return os.path.join(abs_root_path(), RESULTS_PATH, exp_hsh)
+
+    return (re.sub('{(.*?)}', expander, cmd), deps)
+
 def run_exp(branch, cmd, descr):
     # switch to this branch
     sts = exec_cmd(['git', 'checkout', '-f', branch])
@@ -94,8 +130,27 @@ def run_exp(branch, cmd, descr):
     # compute a hash unique to this experiment
     exp_hsh = sha1(hsh + cmd)
 
+    # command expansion must be done in two phases:
+    #  first, inputs are expanded and indentified
+    #  then, the experimental hash is computed and substituted
+
+    # lookup and insert necessary inputs
+    new_cmd, deps = expand_command(cmd)
+
     rootdir = abs_root_path()
     resultsdir = os.path.join(rootdir, RESULTS_PATH)
+    working_dir = os.path.relpath(os.getcwd(), rootdir)
+
+    # compute a hash unique to this experiment
+    # this encoding is not totally fool-proof; maybe look to git
+    #  for ideas?
+    exp_hsh = sha1(hsh + ''.join(deps) + str(len(working_dir)) +
+                   working_dir + str(len(cmd)) + cmd)
+
+    exp_path = os.path.join(resultsdir, exp_hsh)
+
+    # substitute in cmd where necessary
+    new_cmd = new_cmd.replace('{}', exp_path)
 
     # create the results directory if necessary
     if not os.path.isdir(resultsdir):
@@ -112,11 +167,10 @@ def run_exp(branch, cmd, descr):
     # save the experimental description
     info = {'commit': hsh, 'command': cmd, 'date': time.time(),
             'description': descr,
-            'working_dir': os.path.relpath(os.getcwd(), rootdir)}
+            'working_dir': working_dir, 'deps': deps}
     save_descr(os.path.join(exp_path, DESCR_FILE), info)
 
     # run the experiment
-    new_cmd = cmd.replace('{}', exp_path)
     print 'Running command ' + new_cmd
     sts = exec_shell(new_cmd)
     print 'Command exited with status ' + str(sts)
