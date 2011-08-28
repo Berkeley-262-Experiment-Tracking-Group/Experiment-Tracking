@@ -150,6 +150,9 @@ def run_exp(branch, cmd, descr):
 
     exp_path = os.path.join(resultsdir, exp_hsh)
 
+    # save to a log file
+    new_cmd = new_cmd + ' > {}/log 2>&1'
+
     # substitute in cmd where necessary
     new_cmd = new_cmd.replace('{}', exp_path)
 
@@ -175,6 +178,8 @@ def run_exp(branch, cmd, descr):
     print 'Running command ' + new_cmd
     sts = exec_shell(new_cmd)
     print 'Command exited with status ' + str(sts)
+    info['exit_status'] = sts
+    save_descr(os.path.join(exp_path, DESCR_FILE), info)
     
 def read_descrs():
     resultsdir = os.path.join(abs_root_path(), RESULTS_PATH)
