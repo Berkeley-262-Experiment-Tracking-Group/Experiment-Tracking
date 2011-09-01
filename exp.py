@@ -188,6 +188,8 @@ def run_exp(args):
             print 'Could not find matching experiment to import from'
             exit(1)
 
+        print 'Importing results from previous experiment %s' % trunc(matches[0], 6)
+
         info['import'] = matches[0]
         import_dir = os.path.join(abs_root_path(), RESULTS_PATH, matches[0])
 
