@@ -8,9 +8,6 @@
 #  - experiments using the same code can be run in parallel
 # Other niceties may be added as useful.
 #
-# NOTE: this code should not be run on a development copy of a repo, as working
-#  files may be overwritten at any time. A separate experimental copy is
-#  suggested.
 
 # TODO
 #  - parallelization
@@ -19,9 +16,11 @@
 #  - above should be managed separately?
 #  - exp repeat for repeating experiments with new code
 #  - exp run --rerun for rerunning experiments
+#  - exp run --subdir-only to checkout only this directory, not the whole tree
 #  - exp purge for deleting old data
 #  - exp purge --keep-latest for removing redundant data
-#  - automatically manage the repo (i.e., fix the above NOTE)
+#  - what should happen when an experiment fails?
+#  - directory sharing for parallel experiments
 
 import subprocess
 import sys
@@ -33,6 +32,7 @@ import time
 import re
 
 RESULTS_PATH = 'results'
+EXP_PATH = 'exp'
 DESCR_FILE = 'descr'
 
 # very simple serialization: dict.__repr__
@@ -43,17 +43,14 @@ def save_descr(path, info):
     info is intended to be a dictionary of objects for which repr does the
     right thing"""
 
-    f = open(path, 'w')
-    f.write(repr(info))
-    f.close()
+    with open(path, 'w') as f:
+        f.write(repr(info))
 
 def load_descr(path):
     """Load info about an experiment as saved by save_descr"""
 
-    f = open(path)
-    info = eval(f.read())
-    f.close()
-    return info
+    with open(path) as f:
+        return eval(f.read())
 
 def exec_cmd(args):
     p = subprocess.Popen(args)
@@ -106,7 +103,7 @@ def find_by_descr(exps, descr):
 
     return matches
 
-def expand_command(cmd):
+def expand_command(cmd, params):
     """Replace special sequences in cmd with appropriate paths specifying
     output directory and input from other experiments
 
@@ -117,10 +114,17 @@ def expand_command(cmd):
 
     deps = []
 
+    if params is not None:
+        used_params = dict.fromkeys(params.keys(), False)
+
     def expander(m):
         if m.group(1) == '':
             # let this be handled in the next pass
             return '{}'
+        elif m.group(1)[0] == ':':
+            # parameter substition
+            used_params[m.group(1)[1:]] = True
+            return params[m.group(1)[1:]]
         else:
             exp_hshs = find_by_descr(exps, m.group(1))
 
@@ -135,24 +139,61 @@ def expand_command(cmd):
             deps.append(exp_hshs[0])
             return os.path.join(abs_root_path(), RESULTS_PATH, exp_hshs[0])
 
-    return (re.sub('{(.*?)}', expander, cmd), deps)
+    expanded_cmd = (re.sub('{(.*?)}', expander, cmd), deps)
+
+    if params is not None and not all(used_params.values()):
+        print 'Warning: not all parameters were used'
+
+    return expanded_cmd
+
+def check_setup():
+    """Check that this repository is setup for running experiments, and
+    set it up if it isn't"""
+
+    rootdir = abs_root_path()
+
+    expdir = os.path.join(rootdir, EXP_PATH)
+    resultsdir = os.path.join(rootdir,  RESULTS_PATH)
+
+    for path, name in [(expdir, 'Experimental'), (resultsdir, 'Results')]:
+        if not os.path.isdir(path):
+            print name + ' directory does not exist, creating it...'
+            try:
+                os.mkdir(path)
+            except:
+                print 'Could not create directory, aborting'
+                exit(1)
+
+def parse_params(params_str):
+    """Parse a parameter in the string in the from 'k1:v1 k2:v2 ...' into
+    a dictionary"""
+
+    if args.params is None:
+        return None
+    
+    params = {}
+    for param in params_str.split():
+        k, v = param.split(':')
+        params[k] = v
+
+    return params
 
 def run_exp(args):
-    # switch to this branch
-    sts = exec_cmd(['git', 'checkout', '-f', args.commit])
-    if sts != 0:
-        print 'Attempt to switch branches failed with error ' + str(sts)
-        sys.exit(1)
+    # make experiment directories if necessary
+    check_setup()
 
     # find out the hash of experimental commit
     hsh = exec_output(['git', 'rev-parse', 'HEAD']).strip()
-
+    
     # command expansion must be done in two phases:
     #  first, inputs are expanded and indentified
     #  then, the experimental hash is computed and substituted
 
+    # parse parameters from command line
+    params = parse_params(args.params)
+
     # lookup and insert necessary inputs
-    new_cmd, deps = expand_command(args.command)
+    new_cmd, deps = expand_command(args.command, params)
 
     rootdir = abs_root_path()
     resultsdir = os.path.join(rootdir, RESULTS_PATH)
@@ -179,12 +220,12 @@ def run_exp(args):
     # check if this experiment has been run
     exp_path = os.path.join(resultsdir, exp_hsh)
     if handle_existing(exp_hsh):
-        sys.exit(1)
+        exit(1)
 
     # the experimental description
     info = {'commit': hsh, 'command': args.command, 'date': time.time(),
             'description': args.description,
-            'working_dir': working_dir, 'deps': deps}
+            'working_dir': working_dir, 'deps': deps, 'params': params}
 
     # import existing results if requested
     # awkward name conflict here
@@ -209,6 +250,31 @@ def run_exp(args):
 
     # save the experimental description
     save_descr(os.path.join(exp_path, DESCR_FILE), info)
+    
+    expdir = os.path.join(rootdir, EXP_PATH, exp_hsh)
+
+    # make a directory for this experiment
+    try:
+        os.mkdir(expdir)
+    except OSError:
+        print 'Experimental directory could not be created or already exists.'
+        print 'Aborting.'
+        exit(1)
+
+    if args.subdir_only:
+        checkout_dir = working_dir
+    else:
+        checkout_dir = '.'
+
+    # checkout the appropriate commit
+    sts = exec_cmd(['git', '--work-tree=' + expdir,
+                    'checkout', args.commit, '--', checkout_dir])
+    if sts != 0:
+        print 'Attempt to checkout experimental code failed'
+        exit(1)
+        
+    # go to the experimental directory
+    os.chdir(os.path.join(expdir, working_dir))
 
     # run the experiment
     print 'Running command ' + new_cmd
@@ -217,6 +283,9 @@ def run_exp(args):
     info['exit_status'] = sts
     info['date_end'] = time.time()
     save_descr(os.path.join(exp_path, DESCR_FILE), info)
+    
+    # clear the experimental directory
+    shutil.rmtree(expdir)
     
 def read_descrs():
     resultsdir = os.path.join(abs_root_path(), RESULTS_PATH)
@@ -229,7 +298,7 @@ def read_descrs():
         except Exception as e:
             print 'Error reading description for ' + exp_dir
             print e
-            sys.exit(1)
+            exit(1)
     return exps
 
 def list_descrs(exps):
@@ -247,6 +316,8 @@ if __name__ == '__main__':
 
     run_parser = subparsers.add_parser('run', help='run an experiment')
     run_parser.add_argument('--import', action='store_true', help='import results from last run of this experiment')
+    run_parser.add_argument('--params', help='experimental parameter list')
+    run_parser.add_argument('--subdir-only', action='store_true', help='only checkout the contents of current directory')
     run_parser.add_argument('commit', help='git commit expression indicating code to run')
     run_parser.add_argument('command', help='command to run')
     run_parser.add_argument('description', help='unique description of this experiment')
