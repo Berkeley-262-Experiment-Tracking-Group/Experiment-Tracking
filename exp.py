@@ -12,6 +12,17 @@
 #  files may be overwritten at any time. A separate experimental copy is
 #  suggested.
 
+# TODO
+#  - parallelization
+#  - job queue
+#  - automatic jobs
+#  - above should be managed separately?
+#  - exp repeat for repeating experiments with new code
+#  - exp run --rerun for rerunning experiments
+#  - exp purge for deleting old data
+#  - exp purge --keep-latest for removing redundant data
+#  - automatically manage the repo (i.e., fix the above NOTE)
+
 import subprocess
 import sys
 import argparse
@@ -59,7 +70,7 @@ def trunc(s, n):
     if len(s) <= n:
         return s
     else:
-        return s[:n] + '...'
+        return s[:n] + '..'
 
 def sha1(s):
     return hashlib.sha1(s).hexdigest()
@@ -135,9 +146,6 @@ def run_exp(args):
 
     # find out the hash of experimental commit
     hsh = exec_output(['git', 'rev-parse', 'HEAD']).strip()
-
-    # compute a hash unique to this experiment
-    exp_hsh = sha1(hsh + args.command)
 
     # command expansion must be done in two phases:
     #  first, inputs are expanded and indentified
@@ -226,11 +234,11 @@ def read_descrs():
 
 def list_descrs(exps):
     for (exp_hsh, info) in exps.iteritems():
-        print (trunc(exp_hsh, 6) + '\t'
-               + trunc(info['commit'], 6) + '\t'
-               + trunc(info['command'], 20) + '\t'
-               + time.ctime(info['date']) + '\t'
-               + trunc(info['description'], 30))
+        print '{} {} {:22} {} {:32}'.format(trunc(exp_hsh, 6),
+                 trunc(info['commit'], 6),
+                 trunc(info['command'], 20),
+                 time.ctime(info['date']),
+                 trunc(info['description'], 30))
 
 
 if __name__ == '__main__':
