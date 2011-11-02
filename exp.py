@@ -28,6 +28,8 @@
 #  - don't allow running experiments with broken dependencies
 #  - allow running of commands with substition, but no trocking
 #  - organize this code
+#  - check for newer dependencies
+#  - put 'commit' parameter at the end and make it optional
 
 import subprocess
 import sys
@@ -93,9 +95,10 @@ class Exp:
         if not self.success():
             return True
 
-        return any(Exp(hsh).broken_deps() for hsh in self['deps'])
-
-
+        try:
+            return any(Exp(hsh).broken_deps() for hsh in self['deps'])
+        except IOError:
+            return True
 
 # very simple serialization: dict.__repr__
 # human readable, no dependencies
@@ -139,25 +142,20 @@ def abs_root_path():
     return exec_output(['git', 'rev-parse', '--show-toplevel']).strip()
 
 def handle_existing(exp_dir):
-    resultsdir = os.path.join(abs_root_path(), RESULTS_PATH, exp_dir)
-    if os.path.isdir(resultsdir):
-        try:
-            date = load_descr(os.path.join(resultsdir, DESCR_FILE))['date']
-        except Exception as e:
-            print ('A results directory already exists for this experiment, but\n'
-                   ' the description cannot be read. This indicates a problem with\n'
-                   ' this script that must be fixed to continue.')
-            print e
-            return True
+    try:
+        e = Exp(exp_dir)
+    # this should be fixed to handle non-existing and messed up
+    # experiments differently
+    except Exception as e:
+        return False
 
-        print ('This experiment (' + trunc(exp_dir, 6) + ') appears'
-               ' to have already been run\n at ' + time.ctime(date))
-        return True
-    return False
+    print ('This experiment (' + trunc(exp_dir, 6) + ') appears'
+           ' to have already been run\n at ' + time.ctime(e['date']))
+    return True
 
 def match(s, exps):
-    exact_match = lambda x, d: x == d
-    prefix_match = lambda x, d: x.hsh.startswith(d.hsh)
+    exact_match = lambda x, d: x.hsh == d
+    prefix_match = lambda x, d: x.hsh.startswith(d)
     exact_descr_match = lambda x, d: x['description'] == d
     prefix_descr_match = lambda x, d: x['description'].startswith(d)
 
@@ -168,6 +166,8 @@ def match(s, exps):
         matches = [e for e in exps if match_fn(e, s)]
         if len(matches) > 0:
             return matches
+
+    return []
 
 
 
@@ -206,18 +206,18 @@ def expand_command(cmd, params):
             used_params[m.group(1)[1:]] = True
             return str(params[m.group(1)[1:]])
         else:
-            exp_hshs = find(m.group(1), exps=exps)
+            matched_exps = find(m.group(1), exps=exps)
 
-            if len(exp_hshs) == 0:
+            if len(matched_exps) == 0:
                 print 'Error: could not match %s' % m.group(1)
                 exit(1)
 
-            if len(exp_hshs) > 1:
+            if len(matched_exps) > 1:
                 print 'Warning: found multiple matches for %s' % m.group(1)
-                print 'Using latest (%s)' % time.ctime(exps[exp_hshs[0]]['date'])
+                print 'Using latest (%s)' % time.ctime(matched_exps[0]['date'])
 
-            deps.append(exp_hshs[0])
-            return os.path.join(abs_root_path(), RESULTS_PATH, exp_hshs[0])
+            deps.append(matched_exps[0].hsh)
+            return os.path.join(abs_root_path(), RESULTS_PATH, matched_exps[0].hsh)
 
     expanded_cmd = (re.sub('{(.*?)}', expander, cmd), deps)
 
@@ -410,6 +410,7 @@ def read_descrs(keep_unreadable=False, keep_unfinished=False, keep_failed=False)
             if not exp.broken_deps():
                 exps.append(exp)
 
+    sys.stderr.write('Finished reading descriptions...\n')
     return exps
 
 def dominates(exp0, exp1):
@@ -493,18 +494,18 @@ def list_descrs(exps):
         print '  code: {}  params: {}'.format(code, params_dict)
 
 def purge(args):
-    matches = find(exps, args.exp)
+    matches = find(args.exp)
     
     if len(matches) > 1 and not args.all:
         print 'Multiple matching experiments; use --all to purge them all'
         return
 
     resultsdir = os.path.join(abs_root_path(), RESULTS_PATH)
-    for hsh in matches:
-        print 'Purging {} ({})'.format(exps[hsh]['description'], hsh)
+    for exp in matches:
+        print 'Purging {} ({})'.format(exp['description'], exp.hsh)
         if not args.dry_run:
             try:
-                shutil.rmtree(os.path.join(resultsdir, hsh))
+                shutil.rmtree(os.path.join(resultsdir, exp.hsh))
             except Exception as e:
                 print 'Could not remove directory: ', e
 
@@ -516,6 +517,20 @@ def print_hashes(args):
 
     for match in matches:
         print match.hsh
+
+def read_command_args(args):
+    orig_cmd = args.command + ' ' + ' '.join(args.args)
+    params = parse_params(args.params)
+
+    return expand_command(orig_cmd, params)[0]
+
+def print_command(args):
+    print read_command_args(args)
+        
+def run_command(args):
+    cmd = read_command_args(args)
+    sys.exit(exec_shell(cmd))
+    
 
 
 if __name__ == '__main__':
@@ -545,6 +560,18 @@ if __name__ == '__main__':
     hash_parser.add_argument('--latest', action='store_true', help='include only non-dominated experiments')
     hash_parser.add_argument('exp', help='experiment identifier')
     hash_parser.set_defaults(func=print_hashes)
+    
+    cmd_parser = subparsers.add_parser('cmd', help='run a command (not an experiment) expanding references')
+    cmd_parser.add_argument('--params', help='parameter list')
+    cmd_parser.add_argument('command', help='the command')
+    cmd_parser.add_argument('args', nargs='*', help='arguments')
+    cmd_parser.set_defaults(func=run_command)
+
+    print_parser = subparsers.add_parser('print', help='print a command (not an experiment) expanding references')
+    print_parser.add_argument('--params', help='parameter list')
+    print_parser.add_argument('command', help='the command')
+    print_parser.add_argument('args', nargs='*', help='arguments')
+    print_parser.set_defaults(func=print_command)
 
     args = parser.parse_args()
     args.func(args)
