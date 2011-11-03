@@ -26,9 +26,14 @@
 #  - don't allow running experiments with broken dependencies
 #  - organize this code
 #  - check for newer dependencies
-#  - put 'commit' parameter at the end and make it optional
 #  - use tag names where available
 #  - fix params typing mess
+#  - exp table for printing tables of a v b where a, b in {code, command, params...}
+#  - does find_latest always do the right thing?
+#  - fill in previous parameters correctly
+#  - exp run --dry-run
+#  - fix horrible inefficiencies in exp list &c
+#  - matching for exp list
 
 import subprocess
 import sys
@@ -257,6 +262,44 @@ def parse_params(params_str):
 
     return params
 
+def fill_last_args(args):
+    """Fill in missing args using the ones from the last
+    experiment of the same description"""
+
+    # maybe we don't need to pull up the last experiment at all...
+    if args.commit and args.command:
+        return args
+
+    last_exps = find_latest(args.description)
+
+    if not last_exps:
+        return args
+
+    if not args.commit:
+        args.commit = last_exps[0]['commit']
+        print 'Filling in previous commit', trunc(args.commit, 6)
+
+    if not args.command:
+        args.command = last_exps[0]['command']
+        print 'Filling in previous command', trunc(args.command, 30)
+
+    return args
+
+def fill_defaults(args):
+    """Fill in default values of arguments. Note that we don't do this
+    using argparse because we first try to fill in arguments using
+    similar previous experiments"""
+
+    if not args.commit:
+        args.commit = 'HEAD'
+
+    return args
+
+def check_args(args):
+    if not args.command:
+        print 'No command specified and no previous matching experiment found.'
+        exit(0)
+
 def run_exp(args):
     # make experiment directories if necessary
     check_setup()
@@ -267,6 +310,16 @@ def run_exp(args):
     # command expansion must be done in two phases:
     #  first, inputs are expanded and indentified
     #  then, the experimental hash is computed and substituted
+
+    # if arguments are partially specified, fill them in from previous
+    # runs
+    args = fill_last_args(args)
+
+    # now fill in any missing arguments that have defaults
+    args = fill_defaults(args)
+
+    # now make sure we have all the necessary arguments
+    check_args(args)
 
     # parse parameters from command line
     params = parse_params(args.params)
@@ -542,8 +595,8 @@ if __name__ == '__main__':
     run_parser.add_argument('--subdir-only', action='store_true', help='only checkout the contents of current directory')
     run_parser.add_argument('--rerun', action='store_true', help='rerun this experiment, deleting existing results if necessary')
     run_parser.add_argument('description', help='unique description of this experiment')
-    run_parser.add_argument('command', help='command to run')
-    run_parser.add_argument('commit', nargs='?', default='HEAD', help='git commit expression indicating code to run')
+    run_parser.add_argument('command', nargs='?', help='command to run')
+    run_parser.add_argument('commit', nargs='?', help='git commit expression indicating code to run')
     run_parser.set_defaults(func=run_exp)
 
     list_parser = subparsers.add_parser('list', help='list previous experiments')
