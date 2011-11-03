@@ -16,8 +16,6 @@
 #  - above should be managed separately?
 #  - exp repeat for repeating experiments with new code
 #  - exp run --rerun for rerunning experiments
-#  - exp run --subdir-only to checkout only this directory, not the whole tree
-#  - exp purge for deleting old data
 #  - exp purge --keep-latest for removing redundant data
 #  - what should happen when an experiment fails?
 #  - directory sharing for parallel experiments
@@ -26,10 +24,11 @@
 #  - exp show
 #  - check on running experiments
 #  - don't allow running experiments with broken dependencies
-#  - allow running of commands with substition, but no trocking
 #  - organize this code
 #  - check for newer dependencies
 #  - put 'commit' parameter at the end and make it optional
+#  - use tag names where available
+#  - fix params typing mess
 
 import subprocess
 import sys
@@ -542,9 +541,9 @@ if __name__ == '__main__':
     run_parser.add_argument('--params', help='experimental parameter list')
     run_parser.add_argument('--subdir-only', action='store_true', help='only checkout the contents of current directory')
     run_parser.add_argument('--rerun', action='store_true', help='rerun this experiment, deleting existing results if necessary')
-    run_parser.add_argument('commit', help='git commit expression indicating code to run')
-    run_parser.add_argument('command', help='command to run')
     run_parser.add_argument('description', help='unique description of this experiment')
+    run_parser.add_argument('command', help='command to run')
+    run_parser.add_argument('commit', nargs='?', default='HEAD', help='git commit expression indicating code to run')
     run_parser.set_defaults(func=run_exp)
 
     list_parser = subparsers.add_parser('list', help='list previous experiments')
