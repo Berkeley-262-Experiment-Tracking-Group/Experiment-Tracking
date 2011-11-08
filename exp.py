@@ -10,12 +10,14 @@
 #
 
 # TODO
+#  - should remove write permissions on results directories
+#  - there appear some some bugs in hash generating/checking if experiments
+#    have already been run
 #  - parallelization
 #  - job queue
 #  - automatic jobs
 #  - above should be managed separately?
 #  - exp repeat for repeating experiments with new code
-#  - exp run --rerun for rerunning experiments
 #  - exp purge --keep-latest for removing redundant data
 #  - what should happen when an experiment fails?
 #  - directory sharing for parallel experiments
@@ -34,6 +36,12 @@
 #  - exp run --dry-run
 #  - fix horrible inefficiencies in exp list &c
 #  - matching for exp list
+#  - keep track of/fill in --subdir-only option
+#  - add a third, more compact display?
+#  - exp status for seeing running and completed experiments
+#  - piping to 'head' creates a broken pipe error
+#  - don't filter out running experiments when filling in previously used arguments
+#  - there seems to be a bug in exp run --rerun that doesn't remove directories the first time
 
 import subprocess
 import sys
@@ -162,10 +170,19 @@ def match(s, exps):
     prefix_match = lambda x, d: x.hsh.startswith(d)
     exact_descr_match = lambda x, d: x['description'] == d
     prefix_descr_match = lambda x, d: x['description'].startswith(d)
+    def exact_params_match(x, d):
+        if ':' not in d:
+            return False
+        d, ps = d.split(':', 1)
+        ps = [p.split('=', 1) for p in ps.split(',')]
+        # should have a single parameter special case
+        return (x['description'] == d and len(x['params']) == len(ps)
+                and all(x['params'][p[0]] == float(p[1]) for p in ps))
 
-    # search by: exact description match, prefix description
+    # search by: exact description match with parameters,
+    #  exact description match, prefix description
     #  match, exact hash match, prefix hash match
-    for match_fn in (exact_descr_match, prefix_descr_match,
+    for match_fn in (exact_params_match, exact_descr_match, prefix_descr_match,
                      exact_match, prefix_match):
         matches = [e for e in exps if match_fn(e, s)]
         if len(matches) > 0:
@@ -207,10 +224,24 @@ def expand_command(cmd, params):
             return '{}'
         elif m.group(1)[0] == ':':
             # parameter substition
+            # uh oh error checking...
             used_params[m.group(1)[1:]] = True
             return str(params[m.group(1)[1:]])
         else:
-            matched_exps = find(m.group(1), exps=exps)
+            # in-description parameter substitution
+            if ':' in m.group(1):
+                d, ps = m.group(1).split(':', 1)
+                ps = ps.split(',')
+                # more param type mess
+                d += ':' + ','.join(p + '=' + str(params[p]) for p in ps)
+
+                for p in ps:
+                    used_params[p] = True
+                print d
+            else:
+                d = m.group(1)
+
+            matched_exps = find(d, exps=exps)
 
             if len(matched_exps) == 0:
                 print 'Error: could not match %s' % m.group(1)
@@ -292,6 +323,7 @@ def fill_defaults(args):
 
     if not args.commit:
         args.commit = 'HEAD'
+        print 'Filling in default commit HEAD'
 
     return args
 
@@ -304,9 +336,6 @@ def run_exp(args):
     # make experiment directories if necessary
     check_setup()
 
-    # find out the hash of experimental commit
-    hsh = exec_output(['git', 'rev-parse', 'HEAD']).strip()
-    
     # command expansion must be done in two phases:
     #  first, inputs are expanded and indentified
     #  then, the experimental hash is computed and substituted
@@ -320,6 +349,9 @@ def run_exp(args):
 
     # now make sure we have all the necessary arguments
     check_args(args)
+
+    # find out the hash of experimental commit
+    hsh = exec_output(['git', 'rev-parse', args.commit]).strip()
 
     # parse parameters from command line
     params = parse_params(args.params)
