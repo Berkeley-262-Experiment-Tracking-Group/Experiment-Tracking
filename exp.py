@@ -11,8 +11,6 @@
 
 # TODO
 #  - should remove write permissions on results directories
-#  - there appear some some bugs in hash generating/checking if experiments
-#    have already been run
 #  - parallelization
 #  - job queue
 #  - automatic jobs
@@ -42,6 +40,7 @@
 #  - piping to 'head' creates a broken pipe error
 #  - don't filter out running experiments when filling in previously used arguments
 #  - there seems to be a bug in exp run --rerun that doesn't remove directories the first time
+#  - keep track of where experiments are running
 
 import subprocess
 import sys
@@ -88,6 +87,11 @@ class Exp:
     def failure(self):
         return self.info.get('exit_status', 0) != 0
 
+    def running(self):
+        """Running or killed... should be able to distinguish these two somehow"""
+
+        return 'exit_status' not in self.info
+
     def deps(self):
         return [Exp(hsh) for hsh in self['deps']]
 
@@ -103,12 +107,12 @@ class Exp:
     def param(self, name):
         return self['params'][name]
 
-    def broken_deps(self):
-        if not self.success():
+    def broken_deps(self, in_dep=False):
+        if in_dep and not self.success():
             return True
 
         try:
-            return any(Exp(hsh).broken_deps() for hsh in self['deps'])
+            return any(Exp(hsh).broken_deps(in_dep=True) for hsh in self['deps'])
         except IOError:
             return True
 
@@ -474,7 +478,8 @@ def recursive_has_key(d, k, deps):
     return True
 
 # should probably store some kind of index to avoid linear search
-def read_descrs(keep_unreadable=False, keep_unfinished=False, keep_failed=False):
+def read_descrs(keep_unreadable=False, keep_unfinished=False, keep_failed=False,
+                keep_broken_deps=False):
     resultsdir = os.path.join(abs_root_path(), RESULTS_PATH)
     exp_dirs = os.listdir(resultsdir)
 
@@ -491,7 +496,7 @@ def read_descrs(keep_unreadable=False, keep_unfinished=False, keep_failed=False)
         if (exp.success() or
             (exp.failure() and keep_failed) or
             keep_unfinished):
-            if not exp.broken_deps():
+            if keep_broken_deps or not exp.broken_deps():
                 exps.append(exp)
 
     sys.stderr.write('Finished reading descriptions...\n')
@@ -615,6 +620,76 @@ def run_command(args):
     cmd = read_command_args(args)
     sys.exit(exec_shell(cmd))
     
+def show_exp(args):
+    # maybe should actually find one particular description,
+    #  then get all the experiments of that description
+
+    exp_id = ' '.join(args.exp)
+
+    matches = find(exp_id, read_descrs(keep_unfinished=True, keep_failed=True,
+                                       keep_broken_deps=True))
+
+    if len(matches) == 0:
+        print 'Could not find matching experiment ' + args.exp
+        exit(1)
+
+    print ('{} experiments found with description "{}"'
+            .format(len(matches), exp_id))
+    print
+
+    # commands are long, so print out a key
+    commands = {exp['command'] for exp in matches}
+    command_tab = dict((command, i+1) for i, command in enumerate(commands))
+
+    for command, i in command_tab.iteritems():
+        print '{} {}'.format(i, command)
+    print
+
+    # find out all possible params
+    params = set()
+    for exp in matches:
+        if 'params' in exp:
+            for k in exp['params'].keys():
+                params.add(k)
+
+    params = list(params)
+    params.sort()
+
+    def param_str(params):
+        (params[p] for p in params)
+
+    ndeps = max(len(exp['deps']) for exp in matches)
+    if ndeps > 0:
+        deps_format = '{{:{}}}'.format(ndeps * 7 - 1)
+        deps_header = 'Deps'
+    else:
+        deps_format = '{}'
+        deps_header = ''
+
+    # relying now on chronological sort from find
+    # TODO duration
+    format_str = '{:1}{:8} {:25} {:8} {:3} ' + deps_format + ' {:>8}' * len(params)
+    print format_str.format('', 'Hash', 'Start Date', 'Code', 'Cmd', deps_header, *params)
+    for exp in matches:
+        if exp.running():
+            status = '*'
+        elif exp.failure():
+            status = '!'
+        elif exp.broken_deps():
+            status = '?'
+        else:
+            status = ''
+
+        print (format_str
+                .format(status, exp.hsh[:6],
+                    time.ctime(exp['date']),
+                    exp['commit'][:6],
+                    command_tab[exp['command']],
+                    ','.join(dep[:6] for dep in exp['deps']),
+                    *(exp['params'][p] for p in params)))
+
+
+
 
 
 if __name__ == '__main__':
@@ -656,6 +731,10 @@ if __name__ == '__main__':
     print_parser.add_argument('command', help='the command')
     print_parser.add_argument('args', nargs='*', help='arguments')
     print_parser.set_defaults(func=print_command)
+
+    show_parser = subparsers.add_parser('show', help='show details of one experiment')
+    show_parser.add_argument('exp', nargs='*', help='experiment identifier')
+    show_parser.set_defaults(func=show_exp)
 
     args = parser.parse_args()
     args.func(args)
