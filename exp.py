@@ -41,6 +41,11 @@
 #  - don't filter out running experiments when filling in previously used arguments
 #  - there seems to be a bug in exp run --rerun that doesn't remove directories the first time
 #  - keep track of where experiments are running
+#  - exp show: remove constant columns, add options for showing/sorting columns
+#  - exp show: display available files
+#  - exp register
+#  - unified messages and verbosity levels
+#  - fix plural/singular confusion in messages
 
 import subprocess
 import sys
@@ -49,6 +54,7 @@ import os, os.path
 import shutil
 import hashlib
 import time
+import datetime
 import re
 
 RESULTS_PATH = 'results'
@@ -630,7 +636,7 @@ def show_exp(args):
                                        keep_broken_deps=True))
 
     if len(matches) == 0:
-        print 'Could not find matching experiment ' + args.exp
+        print 'Could not find matching experiment ' + ' '.join(args.exp)
         exit(1)
 
     print ('{} experiments found with description "{}"'
@@ -667,9 +673,8 @@ def show_exp(args):
         deps_header = ''
 
     # relying now on chronological sort from find
-    # TODO duration
-    format_str = '{:1}{:8} {:25} {:8} {:3} ' + deps_format + ' {:>8}' * len(params)
-    print format_str.format('', 'Hash', 'Start Date', 'Code', 'Cmd', deps_header, *params)
+    format_str = '{:1}{:8} {:25} {:9} {:8} {:3} ' + deps_format + ' {:>8}' * len(params)
+    print format_str.format('', 'Hash', 'Start Date', 'Duration', 'Code', 'Cmd', deps_header, *params)
     for exp in matches:
         if exp.running():
             status = '*'
@@ -680,17 +685,23 @@ def show_exp(args):
         else:
             status = ''
 
+        if 'date_end' in exp:
+            dur = round(exp['date_end'] - exp['date'])
+            duration = datetime.timedelta(seconds=dur)
+        elif exp.running():
+            dur = round(time.time() - exp['date'])
+            duration = str(datetime.timedelta(seconds=dur)) + '+'
+        else:
+            duration = ''
+
         print (format_str
                 .format(status, exp.hsh[:6],
                     time.ctime(exp['date']),
+                    duration,
                     exp['commit'][:6],
                     command_tab[exp['command']],
                     ','.join(dep[:6] for dep in exp['deps']),
                     *(exp['params'][p] for p in params)))
-
-
-
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Track content created by code')
