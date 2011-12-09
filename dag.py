@@ -53,8 +53,8 @@ class dag:
     def update_states(self):
         for node in self.dag_nodes:
             if node.info['run_state'] == RUN_STATE_RUNNING:
-                node.info['run_state'], node.info['return_code = self.backend.get_state(node)']
-                if node.info['run_state != RUN_STATE_RUNNING']:
+                node.info['run_state'], node.info['return_code'] = self.backend.get_state(node)
+                if node.info['run_state'] != RUN_STATE_RUNNING:
                     
                     print "cleaning up"
                     node.clean_up_run()
