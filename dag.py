@@ -64,8 +64,10 @@ class dag_node:
 
         self.parents = set()
         self.children = set()
-        self.parents.add(parents)
-        self.children.add(children)
+        if parents != None:
+            self.parents.union(parents)
+        if children != None:
+            self.children.union(children)
         self.visited = False
         
 
@@ -84,14 +86,14 @@ class dag_node:
 
 
     def add_parents(self, parents):
-        self.parents.add(parents)
+        self.parents.union(parents)
         for parent in parents:
-            parent.children.add(self)
+            parent.children.union(self)
 
     def add_children(self, children):
-        self.children.add(children)
+        self.children.union(children)
         for child in children:
-            child.parents.add(self)
+            child.parents.union(self)
 
     def read_state_from_disk(self):
         with open(os.path.join(abs_root_path(), RESULTS_PATH, self.hsh, DESCR_FILE)) as f:
