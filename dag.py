@@ -64,20 +64,30 @@ class dag_node:
 
         self.parents = set()
         self.children = set()
-        if parents != None:
+        if parents is not None:
             self.parents.union(parents)
-        if children != None:
+        if children is not None:
             self.children.union(children)
         self.visited = False
         
 
-        new_cmd, deps = expand_command(command, params)
-
+        self.new_cmd, deps = expand_command(command, params)
+	
+	#  A bunch of directories we will need later on
         hsh = exec_output(['git', 'rev-parse', commit]).strip()
         rootdir = abs_root_path()
         self.working_dir = os.path.relpath(os.getcwd(), rootdir)
-        self.hash = sha1(hsh + str(len(working_dir)) +
+        self.hsh = sha1(hsh + str(len(working_dir)) +
                    working_dir + str(len(command)) + new_cmd)
+	self.resultsdir = os.path.join(rootdir, RESULTS_PATH)
+	
+	self.exp_path = os.path.join(self.resultsdir, exp_hsh)
+	self.expdir = os.path.join(rootdir, EXP_PATH, exp_hsh)
+
+	# Creating the new command
+	self.new_cmd = self.new_cmd + ' | tee {}/log 2>&1'
+	self.new_cmd = self.new_cmd.replace('{}', exp_path)
+
 
         self.run_state = self.readStateFromDisk() 
 
@@ -96,15 +106,44 @@ class dag_node:
             child.parents.union(self)
 
     def read_state_from_disk(self):
-        with open(os.path.join(abs_root_path(), RESULTS_PATH, self.hsh, DESCR_FILE)) as f:
-            info = eval(f.read())
+        # TODO: figure out exactly what state it makes sense to store on / load from disk
+	# If the experiment directory exists, then currently assumes experiment is successful
+        if handle_existing(self.hsh):
+	   return RUN_STATE_SUCCESS
+	else
+	   return RUN_STATE_VIRGIN
+
+
+        #with open(os.path.join(abs_root_path(), RESULTS_PATH, self.hsh, DESCR_FILE)) as f:
+        #    info = eval(f.read())
             
-            # TODO: figure out exactly what state it makes sense to store on / load from disk
 
     def is_runnable(self):
         parents_succeeded = all([p.run_state == RUN_STATE_SUCCESS for p in self.parents])
         return run_state == RUN_STATE_VIRGIN and parents_succeded
-            
+
+    def setup_env(self):
+	# Since the experiment has not been run before, assuming the corresponding directories
+	# don't exist
+	# Create results directory if it doesn't exist
+	if not os.path.isdir(resultsdir):
+            os.mkdir(resultsdir)
+	
+	#Info to be written
+	info = {'commit': self.hsh, 'command': self.command, 'date': time.time(),
+            'description': self.descr,
+            'working_dir': self.working_dir, 'deps': [x.hsh for x in self.parents]}
+	
+	# Make the results directory 
+	os.mkdir(self.exp_path)
+	
+	# Save the description and info
+	save_descr(os.path.join(self.exp_path, DESCR_FILE), info);
+
+	
+	
+
+        
     def run(self, black_box):
 
         # TODO: implement setup_env (based on exp.run_exp())
