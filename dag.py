@@ -87,7 +87,7 @@ class dag_node:
 	# Creating the new command
 	self.new_cmd = self.new_cmd + ' | tee {}/log 2>&1'
 	self.new_cmd = self.new_cmd.replace('{}', exp_path)
-
+        #The dependencies will be filled in later once the parents are finished. See setup_env.
 
         self.run_state = self.readStateFromDisk() 
 
@@ -108,8 +108,14 @@ class dag_node:
     def read_state_from_disk(self):
         # TODO: figure out exactly what state it makes sense to store on / load from disk
 	# If the experiment directory exists, then currently assumes experiment is successful
+        # TODO: Make sure this code calls the right parameters, i.e handle_existing uses hsh
+        # Currently uses exit status inside the descr file. Better ways to do that?
         if handle_existing(self.hsh):
-	   return RUN_STATE_SUCCESS
+	    info=load_info(self.hsh)
+	    if(info['exit_status']==0):
+	        return RUN_STATE_SUCCESS
+            else
+                return RUN_STATE_FAILURE   
 	else
 	   return RUN_STATE_VIRGIN
 
@@ -120,27 +126,65 @@ class dag_node:
 
     def is_runnable(self):
         parents_succeeded = all([p.run_state == RUN_STATE_SUCCESS for p in self.parents])
-        return run_state == RUN_STATE_VIRGIN and parents_succeded
+        return self.run_state == RUN_STATE_VIRGIN and parents_succeded
+
+    
+    def fill_in_dependencies(self):
+	#Empty function. Fill in self.new_cmd based on the hashes of parents. Basically replace "expname" by "resultsdir/hash" or sth
+
 
     def setup_env(self):
+        # Most of this copied from exp.py. exp.py has loads of other stuff that might require figuring out
 	# Since the experiment has not been run before, assuming the corresponding directories
 	# don't exist
+        
+	#fill in dependencies in newcmd. Big TODO
+	self.new_cmd=self.fill_in_dependencies();
+
 	# Create results directory if it doesn't exist
-	if not os.path.isdir(resultsdir):
-            os.mkdir(resultsdir)
+	if not os.path.isdir(self.resultsdir):
+            os.mkdir(self.resultsdir)
 	
 	#Info to be written
 	info = {'commit': self.hsh, 'command': self.command, 'date': time.time(),
             'description': self.descr,
             'working_dir': self.working_dir, 'deps': [x.hsh for x in self.parents]}
 	
-	# Make the results directory 
+	# Make the results directory for this experiment
 	os.mkdir(self.exp_path)
 	
 	# Save the description and info
 	save_descr(os.path.join(self.exp_path, DESCR_FILE), info);
 
-	
+	# Make the experiment directories and checkout code. Do it here so that 
+	# you fail in the root node of the cluster, if you fail
+	try:
+            os.mkdir(self.expdir)
+        except OSError:
+            print 'Experimental directory could not be created or already exists.'
+            print 'Aborting.'
+            exit(1)
+
+	# Some args which we may or may not have access to
+        #if args.subdir_only:
+        #    checkout_dir = working_dir
+        #else:
+        checkout_dir = '.'
+        
+        # checkout the appropriate commit
+        # can do this with git --work-tree=... checkout commit -- ., but
+        # cannot do concurrently, so use git archive...
+
+        # ... whose behavior seems to depend on current directory
+        rootdir=abs_root_path()
+        os.chdir(rootdir)
+        sts = exec_shell('git archive {} {} | tar xC {}'
+                         .format(self.commit, checkout_dir, self.expdir))
+        if sts != 0:
+            print 'Attempt to checkout experimental code failed'
+            exit(1)
+
+
 	
 
         
