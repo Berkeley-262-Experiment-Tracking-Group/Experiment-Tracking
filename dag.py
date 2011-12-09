@@ -51,9 +51,9 @@ class dag_node:
             raise Exception("command and code are mutually exclusive")
 
 
-        self.info = {'commit': hsh, 'command': command, 'date': time.time(),
-                'description': desc,
-                'working_dir': working_dir, 'deps': deps}
+       #self.info = {'commit': hsh, 'command': command, 'date': time.time(),
+       #         'description': desc,
+       #         'working_dir': working_dir, 'deps': deps}
 
         self.command = command # command to run (string)
         self.code = code # code to execute
@@ -64,8 +64,8 @@ class dag_node:
 
         self.parents = set()
         self.children = set()
-        self.parents += parents
-        self.children += children
+        self.parents.add(parents)
+        self.children.add(children)
         self.visited = False
         
 
@@ -84,16 +84,16 @@ class dag_node:
 
 
     def add_parents(self, parents):
-        self.parents += parents
+        self.parents.add(parents)
         for parent in parents:
-            parent.children += self
+            parent.children.add(self)
 
     def add_children(self, children):
-        self.children += children
+        self.children.add(children)
         for child in children:
-            child.parents += self
+            child.parents.add(self)
 
-    def read_state_from_disk(self.):
+    def read_state_from_disk(self):
         with open(os.path.join(abs_root_path(), RESULTS_PATH, self.hsh, DESCR_FILE)) as f:
             info = eval(f.read())
             
@@ -121,9 +121,9 @@ class dag_node:
     def clean_up_run(self):
         shutil.rmtree(expdir)          
 
-while not done running everything:
-    poll and update run state at each node
-    walk over nodes, and run each node if possible
+#while not done running everything:
+#    poll and update run state at each node
+#    walk over nodes, and run each node if possible
 
 
 
