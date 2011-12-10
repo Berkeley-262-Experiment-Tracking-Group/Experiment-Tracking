@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import os
 import subprocess
 import dag, exp
@@ -34,7 +35,9 @@ class lbackend:
 
 
 hsh = exp.exec_output(['git', 'rev-parse', 'HEAD']).strip()
-test_node = dag.dag_node("test script", dict(), hsh, command = "./test.sh")
+test_node = dag.dag_node("testscript", dict(), hsh, command = "./test.sh")
+test_node2=dag.dag_node("testscript2", dict(), hsh, command = "./test2.sh {testscript}/log")
+test_node2.add_parents(set([test_node,]));
 test_dag = dag.dag([test_node,])
 lb = lbackend()
 test_dag.backend = lb
