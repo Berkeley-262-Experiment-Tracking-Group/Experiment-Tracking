@@ -25,12 +25,16 @@ class local_backend:
             return node.info['run_state']
         else:
             return_code = node.jobid.poll()
-            print "polled return code ", return_code
             if return_code is None:
                 return dag.RUN_STATE_RUNNING, return_code
             elif return_code == 0:
-                return dag.RUN_STATE_SUCCESS, return_code
+                print "Command '%s' exited with status %d." \
+                    % (node.new_cmd, return_code)
+                node.info['date_end'] = time.time()
+                return dag.RUN_STATE_SUCCESS, return_code            
             else:
+                print "Command '%s' exited with status %d" \
+                    % (node.new_cmd, return_code)
                 return dag.RUN_STATE_FAIL, return_code
 
 

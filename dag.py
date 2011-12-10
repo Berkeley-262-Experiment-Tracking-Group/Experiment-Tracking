@@ -3,14 +3,11 @@ import time
 import shutil
 import re
 
-import util
+import util, exp_common
 
 # TODO: distinguish different failure modes
 [RUN_STATE_VIRGIN, RUN_STATE_RUNNING, RUN_STATE_SUCCESS, RUN_STATE_FAIL] = range(4) 
 
-RESULTS_PATH = 'results'
-EXP_PATH = 'exp'
-DESCR_FILE = 'descr'
 
 def save_descr(path, info):
     """Save info about an experiment to a file
@@ -26,116 +23,13 @@ def load_info(hsh):
     """Load info about an experiment as saved by save_descr"""
     try:
         f = open(os.path.join(util.abs_root_path(), 
-                              RESULTS_PATH, hsh, DESCR_FILE))
+                              exp_common.RESULTS_PATH, hsh, exp_common.DESCR_FILE))
     except IOError as e:
         return None
     else:
         return eval(f.read())
 
 # Helper Functions for filling in commands.
-
-# This function matches a description with a node. Copied from exp with minor changes
-def match(s, nodes):
-    exact_match = lambda x, d: x.hsh == d
-    prefix_match = lambda x, d: x.hsh.startswith(d)
-    exact_descr_match = lambda x, d: x.info['description'] == d
-    prefix_descr_match = lambda x, d: x.info['description'].startswith(d)
-    def exact_params_match(x, d):
-        if ':' not in d:
-            return False
-        d, ps = d.split(':', 1)
-        ps = [p.split('=', 1) for p in ps.split(',')]
-        # should have a single parameter special case
-        return (x.info['description'] == d and len(x.info['params']) == len(ps)
-                and all(x.info['params'][p[0]] == float(p[1]) for p in ps))
-
-    # search by: exact description match with parameters,
-    #  exact description match, prefix description
-    #  match, exact hash match, prefix hash match
-    for match_fn in (exact_params_match, exact_descr_match, prefix_descr_match,
-                     exact_match, prefix_match):
-        matches = [e for e in nodes if match_fn(e, s)]
-        if len(matches) > 0:
-            return matches
-
-    return []
-
-# Find a descr in nodes. Copied from exp with minor changes
-def find(descr, nodes):
-    #if exps is None:
-    #    exps = read_descrs()
-
-    matches = match(descr, nodes)
-
-    # note: descending sort
-    matches.sort(lambda x, y: cmp(y.info['date'], x.info['date']))
-
-    return matches
-
-
-# Copied from exp with minor changes. Might have to change drastically based on Allie's description
-# Right now, it seems, has 4 cases. Output is written as {}. Parameters are written as {:c}, dependencies without parameters are written as
-# {parent} and dependency with params are written as {parent:c}. Will probably have to wait till Allie's input.
-def expand_command(cmd, params, parent_nodes):
-    """Replace special sequences in cmd with appropriate paths specifying
-    output directory and input from other experiments
-
-    Note that the experimental hash itself is not inserted here, since it
-    must be computed from the output of this function"""
-
-    # Should not need to read any experiments from disk, Instead just search among parents.
-    # exps = read_descrs()
-
-    deps = []
-
-    if params is not None:
-        used_params = dict.fromkeys(params.keys(), False)
-
-    def expander(m):
-        if m.group(1) == '':
-            # let this be handled in the next pass
-            return '{}'
-        elif m.group(1)[0] == ':':
-            # parameter substition
-            # uh oh error checking...
-            used_params[m.group(1)[1:]] = True
-            return str(params[m.group(1)[1:]])
-        else:
-            # in-description parameter substitution
-            if ':' in m.group(1):
-                d, ps = m.group(1).split(':', 1)
-                ps = ps.split(',')
-                # more param type mess
-                d += ':' + ','.join(p + '=' + str(params[p]) for p in ps)
-
-                for p in ps:
-                    used_params[p] = True
-            else:
-                d = m.group(1)
-
-            matched_exps = find(d, parent_nodes)
-
-
-	    # If something is not matched, this just gives up. Should we allow the user to create dependencies on the fly?
-            if len(matched_exps) == 0:
-                print 'Error: could not match %s. Did you specify it as a dependency?' % m.group(1)
-                exit(1)
-
-            if len(matched_exps) > 1:
-                print 'Warning: found multiple matches for %s' % m.group(1)
-                print 'Using latest (%s)' % time.ctime(matched_exps[0]['date'])
-
-            deps.append(matched_exps[0].hsh)
-            return os.path.join(util.abs_root_path(), RESULTS_PATH, matched_exps[0].hsh)
-
-    expanded_cmd = (re.sub('{(.*?)}', expander, cmd), deps)
-
-    if params is not None and not all(used_params.values()):
-        print 'Warning: not all parameters were used'
-
-    return expanded_cmd
-
-
 
 class dag:
 
@@ -151,6 +45,9 @@ class dag:
 	for n in self.dag_nodes:
             n.visited = False
             n.job_init()
+            if n['run_state'] == RUN_STATE_SUCCESS:
+                print "Job '%s' has already completed successfully, skipping..." % (n['description'])
+
 
     # helper method for topological sort
     def visit(self, node):
@@ -159,6 +56,13 @@ class dag:
             for m in node.children:
                 self.visit(m)
             self.dag_nodes_reversed.append(node)
+
+    def mainloop(self):
+         while self.finished_running() == RUN_STATE_RUNNING:
+             self.run_runnable_jobs()
+             time.sleep(1)
+             self.update_states()
+         return self.finished_running()
 
     def update_states(self):
         for node in self.dag_nodes:
@@ -180,14 +84,32 @@ class dag:
                 return RUN_STATE_RUNNING
             
             else:
-                save_descr(os.path.join(node.exp_results, DESCR_FILE), node.info)
+                save_descr(os.path.join(node.exp_results, exp_common.DESCR_FILE), node.info)
                 if node.info['run_state'] == RUN_STATE_FAIL:
                     return RUN_STATE_FAIL
         return RUN_STATE_SUCCESS
 
 class dag_node:
      
-    def __init__(self, desc, params, commit, command = None, code = None, parents = None, children = None):
+    def __init__(self, desc=None, params={}, commit=None, command = None, code = None, parents = None, children = None, rerun = False, subdir_only = False, hsh = None):
+
+        if hsh is None and (desc is None or commit is None or (command is None and code is None)):
+            print "Error: if not specifying hash, must specify description, commit, and either command or code."
+            exit(1)
+        if hsh is not None and (desc is not None or commit is not None or command is not None or code is not None):
+            print "Warning: ignoring description, commit, command, and code since hash is specified."
+
+        # exactly one of these should be set
+        if command is not None and code is not None:
+            print "Error: command and code are mutually exclusive."
+            exit(1)
+        self.command=command
+        self.code=code
+        self.commit=commit
+        self.params=params
+        self.desc=desc   
+        self.hsh = hsh
+
         # DAG structure pointers
         self.parents = set()
         self.children = set()
@@ -196,40 +118,47 @@ class dag_node:
         if children is not None:
             self.children=self.children.union(children)
         self.visited = False
-        # exactly one of these should be set
-        if command is not None and code is not None:
-            raise Exception("command and code are mutually exclusive")
-	self.command=command
-	self.code=code
-	self.commit=commit
-	self.params=params
-	self.desc=desc        
 
+        self.rerun = rerun
+        self.subdir_only = subdir_only
+
+        if hsh is not None:
+            self.job_init()
 
     # Have to initialize the hash and all separately, after the parents have been filled. This is because the hash 
     # should use the new command after filling in the hashes of parents and the parameters, and so must be done in
     # topological order.
     def job_init(self):
     	
-    	
+
         # Creating the new command
-        self.new_cmd, deps = expand_command(self.command, self.params, self.parents)
+        
 
 	#  A bunch of directories we will need later on
         rootdir = util.abs_root_path()
         self.rootdir=rootdir
         self.working_dir = os.path.relpath(os.getcwd(), rootdir)
-        self.hsh = util.sha1(self.commit + str(len(self.working_dir)) +
-                   self.working_dir + str(len(self.command)) + self.new_cmd)
 
-	self.resultsdir = os.path.join(rootdir, RESULTS_PATH)
+        if self.hsh is None:        
+            self.new_cmd, deps = exp_common.expand_command(self.command, self.params, self.parents)   
+            self.hsh = util.sha1(self.commit + str(len(self.working_dir)) +
+                                 self.working_dir + str(len(self.command)) + self.new_cmd)
+            # try to read run info from disk
+            self.info = load_info(self.hsh)
+        else:
+            self.info = load_info(self.hsh)
+            if self.info is None:
+                print "Error: could not load experiment %s." % (self.hsh)
+                exit(1)
+            self.new_cmd, deps = exp_common.expand_command(self.info["command"], self.info["params"], self.deps())   
+            self.desc = self.info['description']
+
+	self.resultsdir = os.path.join(rootdir, exp_common.RESULTS_PATH)
       	self.exp_results = os.path.join(self.resultsdir, self.hsh)
-        self.expdir = os.path.join(rootdir, EXP_PATH, self.hsh)
+        self.expdir = os.path.join(rootdir, exp_common.EXP_PATH, self.hsh)
 
 	self.new_cmd = self.new_cmd + ' | tee {}/log 2>&1'
 	self.new_cmd = self.new_cmd.replace('{}', self.exp_results)
-	# try to read run info from disk
-        self.info = load_info(self.hsh)
 
         # if not found, intialize from scratch
         if self.info is None:
@@ -246,21 +175,23 @@ class dag_node:
             self.info['code'] = self.code # code to execute
 
             self.info['commit'] = self.commit # commit hash (string)
-            self.info['data'] = time.time()
+            self.info['date'] = time.time()
             self.info['params'] = self.params # parameters to pass (dictionary)
 
             self.info['run_state'] = RUN_STATE_VIRGIN
             self.info['return_code'] = None
         else:
             if self.info['description'] != self.desc:
-                print "warning: job description '%s' differs from " \
+                print "Warning: job description '%s' differs from " \
                     "saved description '%s'; using '%s'" \
-                    % (self.desc, self.info['description'], self.desc)
-                self.info['description'] = self.desc
+                    % (self.desc, self.info['description'], \
+                           self.info['description'])
+        
 
-            if self.info['run_state'] == RUN_STATE_SUCCESS:
-                print "Job '%s' has already completed successfully, "\
-                    "skipping..." % (self.info['description'])
+            if self.rerun == True:
+                self.info['run_state'] = RUN_STATE_VIRGIN
+                shutil.rmtree(self.exp_results)
+
 
         self.jobid = None
 
@@ -302,18 +233,19 @@ class dag_node:
 
 	
 	# Create experiments directory if it doesn't exist
-	if not os.path.isdir(os.path.join(self.rootdir, EXP_PATH)):
-	    os.mkdir(os.path.join(self.rootdir, EXP_PATH))
+	if not os.path.isdir(os.path.join(self.rootdir, exp_common.EXP_PATH)):
+	    os.mkdir(os.path.join(self.rootdir, exp_common.EXP_PATH))
 	    
 	# Make the results directory for this experiment
         if not os.path.isdir(self.exp_results):
             os.mkdir(self.exp_results)
 	
 	# Save the description and info
-	save_descr(os.path.join(self.exp_results, DESCR_FILE), self.info);
+	save_descr(os.path.join(self.exp_results, exp_common.DESCR_FILE), self.info);
 
-	# Make the experiment directories and checkout code. Do it here so that 
-	# you fail in the root node of the cluster, if you fail
+	# Make the experiment directories and checkout code. Do it
+	# here so that you fail in the root node of the cluster, if
+	# you fail
         if os.path.isdir(self.expdir):
             shutil.rmtree(self.expdir)
 	try:
@@ -323,11 +255,11 @@ class dag_node:
             print 'Aborting.'
             exit(1)
 
-	# Some args which we may or may not have access to
-        #if args.subdir_only:
-        #    checkout_dir = working_dir
-        #else:
-        checkout_dir = '.'
+
+        if self.subdir_only:
+            checkout_dir = working_dir
+        else:
+            checkout_dir = '.'
         
         # checkout the appropriate commit
         # can do this with git --work-tree=... checkout commit -- ., but
@@ -371,3 +303,46 @@ class dag_node:
     	os.chdir(os.path.join(self.rootdir, self.working_dir))
         shutil.rmtree(self.expdir)          
 
+
+    def __getitem__(self, name):
+        return self.info[name]
+
+    def __contains__(self, name):
+        return name in self.info
+
+    def get(self, name):
+        return self.info.get(name)
+
+    def success(self):
+        return self.info['run_state'] == RUN_STATE_SUCCESS
+
+    def failure(self):
+        return self.info['run_state'] == RUN_STATE_FAIL
+
+    def running(self):
+        """Running or killed... should be able to distinguish these two somehow"""
+        return self.info['run_state'] == RUN_STATE_RUNNING
+
+    def deps(self):
+        return [dag_node(hsh = hsh) \
+                    for hsh in self.info['deps']]
+
+    def find_deps(self, name):
+        return exp_common.match(name, self.deps())
+
+    def find_dep(self, name):
+        return self.find_deps(name)[0]
+
+    def filename(self, name):
+        return os.path.join(abs_root_path(), RESULTS_PATH, self.hsh, name)
+
+    def param(self, name):
+        return self.info['params'][name]
+
+    def broken_deps(self, in_dep=False):
+        if in_dep and not self.success():
+            return True
+        try:
+            return any(dag_node(hsh = hsh).broken_deps(in_dep=True) for hsh in self.info['deps'])
+        except IOError:
+            return True

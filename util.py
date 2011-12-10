@@ -17,8 +17,16 @@ def exec_shell(cmd):
 def exec_output(args):
     return subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]
 
+
+
 def abs_root_path():
     return exec_output(['git', 'rev-parse', '--show-toplevel']).strip()
 
 def sha1(s):
     return hashlib.sha1(s).hexdigest()
+
+def trunc(s, n):
+    if len(s) <= n:
+        return s
+    else:
+        return s[:n] + '..'
