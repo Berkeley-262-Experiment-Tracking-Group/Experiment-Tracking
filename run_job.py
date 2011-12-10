@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import dag, util, local_backend
 import time
 

@@ -88,7 +88,7 @@ class dag:
                 if node.info['run_state'] == RUN_STATE_FAIL:
                     return RUN_STATE_FAIL
         return RUN_STATE_SUCCESS
-
+  
 class dag_node:
      
     def __init__(self, desc=None, params={}, commit=None, command = None, code = None, parents = None, children = None, rerun = False, subdir_only = False, hsh = None):
@@ -138,11 +138,16 @@ class dag_node:
         rootdir = util.abs_root_path()
         self.rootdir=rootdir
         self.working_dir = os.path.relpath(os.getcwd(), rootdir)
-
+	self.resultsdir = os.path.join(rootdir, exp_common.RESULTS_PATH)
+	
         if self.hsh is None:        
             self.new_cmd, deps = exp_common.expand_command(self.command, self.params, self.parents)   
             self.hsh = util.sha1(self.commit + str(len(self.working_dir)) +
                                  self.working_dir + str(len(self.command)) + self.new_cmd)
+            self.exp_results = os.path.join(self.resultsdir, self.hsh)
+            self.expdir = os.path.join(rootdir, exp_common.EXP_PATH, self.hsh)
+            self.new_cmd = self.new_cmd + ' | tee {}/log 2>&1'
+	    self.new_cmd = self.new_cmd.replace('{}', self.exp_results)
             # try to read run info from disk
             self.info = load_info(self.hsh)
         else:
@@ -150,15 +155,17 @@ class dag_node:
             if self.info is None:
                 print "Error: could not load experiment %s." % (self.hsh)
                 exit(1)
-            self.new_cmd, deps = exp_common.expand_command(self.info["command"], self.info["params"], self.deps())   
+            self.new_cmd = self.info['final_command']
+            self.deps = self.info['deps'] 
+            #exp_common.expand_command(self.info["command"], self.info["params"], self.deps())   
             self.desc = self.info['description']
+            self.exp_results = os.path.join(self.resultsdir, self.hsh)
+            self.expdir = os.path.join(rootdir, exp_common.EXP_PATH, self.hsh)
 
-	self.resultsdir = os.path.join(rootdir, exp_common.RESULTS_PATH)
-      	self.exp_results = os.path.join(self.resultsdir, self.hsh)
-        self.expdir = os.path.join(rootdir, exp_common.EXP_PATH, self.hsh)
+	
+      	
 
-	self.new_cmd = self.new_cmd + ' | tee {}/log 2>&1'
-	self.new_cmd = self.new_cmd.replace('{}', self.exp_results)
+	
 
         # if not found, intialize from scratch
         if self.info is None:
@@ -180,6 +187,8 @@ class dag_node:
 
             self.info['run_state'] = RUN_STATE_VIRGIN
             self.info['return_code'] = None
+            
+            self.info['final_command']=self.new_cmd
         else:
             if self.info['description'] != self.desc:
                 print "Warning: job description '%s' differs from " \

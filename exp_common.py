@@ -8,10 +8,13 @@ RESULTS_PATH = 'results'
 EXP_PATH = 'exp'
 DESCR_FILE = 'descr'
 
+# A hack. Need to do something so that all experiments aren't repeatedly read from disk.
+all_nodes=None
+
 # Copied from exp with minor changes. Might have to change drastically based on Allie's description
 # Right now, it seems, has 4 cases. Output is written as {}. Parameters are written as {:c}, dependencies without parameters are written as
 # {parent} and dependency with params are written as {parent:c}. Will probably have to wait till Allie's input.
-def expand_command(cmd, params, parent_nodes = None):
+def expand_command(cmd, params, parent_nodes = None, have_loaded_all=False):
     """Replace special sequences in cmd with appropriate paths specifying
     output directory and input from other experiments
 
@@ -22,10 +25,17 @@ def expand_command(cmd, params, parent_nodes = None):
 
     deps = []
 
+    # In case this is not being run from the DAG, we might need to look up older experiments. This variable stores all experiments,
+    # but is not filled in unless actually required.
+    
+    
+    
+    
     if params is not None:
         used_params = dict.fromkeys(params.keys(), False)
 
     def expander(m):
+        
         if m.group(1) == '':
             # let this be handled in the next pass
             return '{}'
@@ -52,8 +62,21 @@ def expand_command(cmd, params, parent_nodes = None):
 
 	    # If something is not matched, this just gives up. Should we allow the user to create dependencies on the fly?
             if len(matched_exps) == 0:
-                print 'Error: could not match %s. Did you specify it as a dependency?' % m.group(1)
-                exit(1)
+                print 'Warning: could not match %s in the dependency. Did you specify it as a dependency?' % m.group(1)
+                var=raw_input('Do you want me to check all older experiments? y/n')
+                
+                if(var=='y'):
+                    global all_nodes
+                    if all_nodes is None:
+                        all_nodes=read_descrs()
+                    #    have_loaded_all = True
+                    matched_exps = find(d, all_nodes)
+                    if len(matched_exps) == 0:
+                        print 'Error: Could not match %s. Aborting.' % m.group(1)
+                        exit(1)
+                else:
+                    print 'Aborting.'        
+                    exit(1)
 
             if len(matched_exps) > 1:
                 print 'Warning: found multiple matches for %s' % m.group(1)
@@ -155,6 +178,10 @@ def compare(exp0, exp1):
         return 1
 
 
+
+
+
+
 # should probably store some kind of index to avoid linear search
 def read_descrs(keep_unreadable=False, keep_unfinished=False, keep_failed=False,
                 keep_broken_deps=False):
@@ -162,6 +189,7 @@ def read_descrs(keep_unreadable=False, keep_unfinished=False, keep_failed=False,
 
     try:
         exp_dirs = os.listdir(resultsdir)
+        
     except OSError:
         exp_dirs = []
 
