@@ -32,7 +32,7 @@ class Torque_blackbox:
 	pipe=subprocess.Popen(qsub_command, stdout=subprocess.PIPE)
 	node.job_id=pipe.read().strip
  
-    def getState(node):
+    def get_state(node):
         #The code that calls this will need to update the info file of the job.
 	qstat_command='qstat | grep \'{}\''.format(node.job_id)
 	canfind=os.system(qstat_command)
