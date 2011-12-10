@@ -38,7 +38,7 @@ class dag:
         self.dag_nodes_reversed = []
         for n in toplevel_nodes:
             self.visit(n)
-        self.dag_nodes = [x for x in reversed(self.dag_nodes_reversed)]
+        self.dag_nodes = list(reversed(self.dag_nodes_reversed))
         for n in self.dag_nodes:
             n.visited = False
 
