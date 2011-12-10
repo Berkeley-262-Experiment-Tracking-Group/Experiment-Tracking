@@ -3,6 +3,13 @@ import os
 import time
 import shutil
 import exp
+import util
+
+
+
+
+
+
 
 # TODO: distinguish different failure modes
 [RUN_STATE_VIRGIN, RUN_STATE_RUNNING, RUN_STATE_SUCCESS, RUN_STATE_FAIL] = range(4) 
@@ -13,11 +20,11 @@ DESCR_FILE = 'descr'
 
 def load_info(hsh):
     """Load info about an experiment as saved by save_descr"""
-    print "reading from", os.path.join(exp.abs_root_path(), RESULTS_PATH, hsh, DESCR_FILE)
+    print "reading from", os.path.join(util.abs_root_path(), RESULTS_PATH, hsh, DESCR_FILE)
 
     try:
 
-        f = open(os.path.join(exp.abs_root_path(), RESULTS_PATH, hsh, DESCR_FILE))
+        f = open(os.path.join(util.abs_root_path(), RESULTS_PATH, hsh, DESCR_FILE))
 
     except IOError as e:
         print "new file"
@@ -71,7 +78,7 @@ class dag:
                 return RUN_STATE_RUNNING
             
             else:
-                exp.save_descr(os.path.join(node.exp_results, DESCR_FILE), node.info)
+                util.save_descr(os.path.join(node.exp_results, DESCR_FILE), node.info)
                 if node.info['run_state'] == RUN_STATE_FAIL:
                     return RUN_STATE_FAIL
         return RUN_STATE_SUCCESS
@@ -85,7 +92,7 @@ class dag_node:
         self.new_cmd, deps = exp.expand_command(command, params)
 
 	#  A bunch of directories we will need later on
-        rootdir = exp.abs_root_path()
+        rootdir = util.abs_root_path()
         self.working_dir = os.path.relpath(os.getcwd(), rootdir)
         self.hsh = exp.sha1(commit + str(len(self.working_dir)) +
                    self.working_dir + str(len(command)) + self.new_cmd)
@@ -171,18 +178,23 @@ class dag_node:
 	# Create results directory if it doesn't exist
 	if not os.path.isdir(self.resultsdir):
             os.mkdir(self.resultsdir)
+
+	# Create experiments directory if it doesn't exist
+	if not os.path.isdir(os.path.join(util.abs_root_path(), EXP_PATH)):
+	    os.mkdir(os.path.join(util.abs_root_path(), EXP_PATH))
 	
 	# Make the results directory for this experiment
         if not os.path.isdir(self.exp_results):
             os.mkdir(self.exp_results)
 	
 	# Save the description and info
-	exp.save_descr(os.path.join(self.exp_results, DESCR_FILE), self.info);
+	util.save_descr(os.path.join(self.exp_results, DESCR_FILE), self.info);
 
 	# Make the experiment directories and checkout code. Do it here so that 
 	# you fail in the root node of the cluster, if you fail
         if os.path.isdir(self.expdir):
             shutil.rmtree(self.expdir)
+	print(self.expdir)
 	try:
             os.mkdir(self.expdir)
         except OSError:
@@ -201,7 +213,7 @@ class dag_node:
         # cannot do concurrently, so use git archive...
 
         # ... whose behavior seems to depend on current directory
-        rootdir=exp.abs_root_path()
+        rootdir=util.abs_root_path()
         os.chdir(rootdir)
         sts = exp.exec_shell('git archive {} {} | tar xC {}'
                          .format(self.info['commit'], checkout_dir, self.expdir))
