@@ -1,10 +1,9 @@
-import subprocess
 import os
 import time
 import shutil
-import exp
-import hashlib
 import re
+
+import util
 
 # TODO: distinguish different failure modes
 [RUN_STATE_VIRGIN, RUN_STATE_RUNNING, RUN_STATE_SUCCESS, RUN_STATE_FAIL] = range(4) 
@@ -12,40 +11,6 @@ import re
 RESULTS_PATH = 'results'
 EXP_PATH = 'exp'
 DESCR_FILE = 'descr'
-
-def load_info(hsh):
-    """Load info about an experiment as saved by save_descr"""
-    print "reading from", os.path.join(abs_root_path(), RESULTS_PATH, hsh, DESCR_FILE)
-
-    try:
-
-        f = open(os.path.join(abs_root_path(), RESULTS_PATH, hsh, DESCR_FILE))
-
-    except IOError as e:
-        print "new file"
-        return None
-    else:
-
-        return eval(f.read())
-
-# Stuff imported from exp. Decided to put it here since closely linked with dag_nodes
-
-# Shortcuts for running shell commands
-
-def exec_cmd(args):
-    p = subprocess.Popen(args)
-    return os.waitpid(p.pid, 0)[1]
-
-def exec_shell(cmd):
-    p = subprocess.Popen(cmd, shell=True)
-    return os.waitpid(p.pid, 0)[1]
-
-
-def exec_output(args):
-    return subprocess.Popen(args, stdout=subprocess.PIPE).communicate()[0]
-
-def abs_root_path():
-    return exec_output(['git', 'rev-parse', '--show-toplevel']).strip()
 
 def save_descr(path, info):
     """Save info about an experiment to a file
@@ -57,8 +22,15 @@ def save_descr(path, info):
         f.write(repr(info))
         f.write('\n')
 
-def sha1(s):
-    return hashlib.sha1(s).hexdigest()
+def load_info(hsh):
+    """Load info about an experiment as saved by save_descr"""
+    try:
+        f = open(os.path.join(util.abs_root_path(), 
+                              RESULTS_PATH, hsh, DESCR_FILE))
+    except IOError as e:
+        return None
+    else:
+        return eval(f.read())
 
 # Helper Functions for filling in commands.
 
@@ -87,8 +59,6 @@ def match(s, nodes):
             return matches
 
     return []
-
-
 
 # Find a descr in nodes. Copied from exp with minor changes
 def find(descr, nodes):
@@ -140,11 +110,11 @@ def expand_command(cmd, params, parent_nodes):
 
                 for p in ps:
                     used_params[p] = True
-                print d
             else:
                 d = m.group(1)
 
             matched_exps = find(d, parent_nodes)
+
 
 	    # If something is not matched, this just gives up. Should we allow the user to create dependencies on the fly?
             if len(matched_exps) == 0:
@@ -156,7 +126,7 @@ def expand_command(cmd, params, parent_nodes):
                 print 'Using latest (%s)' % time.ctime(matched_exps[0]['date'])
 
             deps.append(matched_exps[0].hsh)
-            return os.path.join(abs_root_path(), RESULTS_PATH, matched_exps[0].hsh)
+            return os.path.join(util.abs_root_path(), RESULTS_PATH, matched_exps[0].hsh)
 
     expanded_cmd = (re.sub('{(.*?)}', expander, cmd), deps)
 
@@ -164,12 +134,6 @@ def expand_command(cmd, params, parent_nodes):
         print 'Warning: not all parameters were used'
 
     return expanded_cmd
-
-
-
-
-
-
 
 
 
@@ -252,10 +216,10 @@ class dag_node:
         self.new_cmd, deps = expand_command(self.command, self.params, self.parents)
 
 	#  A bunch of directories we will need later on
-        rootdir = abs_root_path()
+        rootdir = util.abs_root_path()
         self.rootdir=rootdir
         self.working_dir = os.path.relpath(os.getcwd(), rootdir)
-        self.hsh = sha1(self.commit + str(len(self.working_dir)) +
+        self.hsh = util.sha1(self.commit + str(len(self.working_dir)) +
                    self.working_dir + str(len(self.command)) + self.new_cmd)
 
 	self.resultsdir = os.path.join(rootdir, RESULTS_PATH)
@@ -278,9 +242,6 @@ class dag_node:
             # The dependencies will be filled in later once the parents are finished. See setup_env.
             self.info['deps'] = set([x.hsh for x in self.parents] + deps)
 
-
-            
-
             self.info['command'] = self.command # command to run (string)
             self.info['code'] = self.code # code to execute
 
@@ -290,7 +251,16 @@ class dag_node:
 
             self.info['run_state'] = RUN_STATE_VIRGIN
             self.info['return_code'] = None
-      
+        else:
+            if self.info['description'] != self.desc:
+                print "warning: job description '%s' differs from " \
+                    "saved description '%s'; using '%s'" \
+                    % (self.desc, self.info['description'], self.desc)
+                self.info['description'] = self.desc
+
+            if self.info['run_state'] == RUN_STATE_SUCCESS:
+                print "Job '%s' has already completed successfully, "\
+                    "skipping..." % (self.info['description'])
 
         self.jobid = None
 
@@ -346,7 +316,6 @@ class dag_node:
 	# you fail in the root node of the cluster, if you fail
         if os.path.isdir(self.expdir):
             shutil.rmtree(self.expdir)
-	print(self.expdir)
 	try:
             os.mkdir(self.expdir)
         except OSError:
@@ -365,22 +334,28 @@ class dag_node:
         # cannot do concurrently, so use git archive...
 
         # ... whose behavior seems to depend on current directory
-        rootdir=abs_root_path()
+        rootdir=util.abs_root_path()
         os.chdir(rootdir)
-        sts = exec_shell('git archive {} {} | tar xC {}'
+        sts = util.exec_shell('git archive {} {} | tar xC {}'
                          .format(self.info['commit'], checkout_dir, self.expdir))
         if sts != 0:
             print 'Attempt to checkout experimental code failed'
             exit(1)
 
-    def run(self, black_box):
+        # Check to make sure the command we're going to run is
+        # actually in the checked-out repo.
+        base_command_name = self.new_cmd.split(" ")[0]
+        base_command_fullpath = \
+            os.path.join(self.expdir, self.working_dir, base_command_name)
+        if not os.path.exists(base_command_fullpath):
+            print "Error: '%s' not found. Did you remember to add it to the git repository?" % (base_command_name)
+            exit(1)
 
-        print "run - setup_env"
+    def run(self, black_box):
 
         # TODO: implement setup_env (based on exp.run_exp())
         self.setup_env()
 
-        print "run - executing command"
         if self.info['code'] is not None:
             try:
                 self.info['return_code'] = eval(self.info['code'])

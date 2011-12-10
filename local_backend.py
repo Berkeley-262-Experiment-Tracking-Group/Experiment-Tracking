@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 import os
 import subprocess
-import dag, exp
+import dag, util
 import time
 
-class lbackend:
+class local_backend:
 
     def __init__(self):
         pass
@@ -15,7 +15,7 @@ class lbackend:
         os.chdir(os.path.join(node.expdir, node.working_dir))
 
         # run the experiment
-        print 'Running command ' + node.new_cmd
+        print 'Running command ' + node.new_cmd + ' in directory ' + os.getcwd()
         
         node.jobid = subprocess.Popen(node.new_cmd, shell = True)
         return node.jobid
@@ -33,17 +33,4 @@ class lbackend:
             else:
                 return dag.RUN_STATE_FAIL, return_code
 
-
-hsh = exp.exec_output(['git', 'rev-parse', 'HEAD']).strip()
-test_node = dag.dag_node("testscript", dict(), hsh, command = "./test.sh")
-test_node2=dag.dag_node("testscript2", dict(), hsh, command = "./test2.sh {testscript}/log")
-test_node2.add_parents(set([test_node,]));
-test_dag = dag.dag([test_node,])
-lb = lbackend()
-test_dag.backend = lb
-
-while test_dag.finished_running() == dag.RUN_STATE_RUNNING:
-    test_dag.run_runnable_jobs()
-    time.sleep(1)
-    test_dag.update_states()
 
