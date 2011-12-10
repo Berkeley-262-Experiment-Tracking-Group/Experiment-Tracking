@@ -1,0 +1,12 @@
+create_dataset1
+	"myDataset"
+create_dataset2
+	"myDataset2"
+svm_train [{dataset}]/data []/model
+	"train"
+	HEAD
+	C=[x for x in range(1,3)], dataset="myDataset"
+	{dataset}
+svm_test [train]/model []/out
+	"test"
+	{"train"}
