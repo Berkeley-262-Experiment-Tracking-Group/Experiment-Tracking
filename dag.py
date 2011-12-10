@@ -285,15 +285,6 @@ class dag_node:
             print 'Attempt to checkout experimental code failed'
             exit(1)
 
-        # Check to make sure the command we're going to run is
-        # actually in the checked-out repo.
-        base_command_name = self.new_cmd.split(" ")[0]
-        base_command_fullpath = \
-            os.path.join(self.expdir, self.working_dir, base_command_name)
-        if not os.path.exists(base_command_fullpath):
-            print "Error: '%s' not found. Did you remember to add it to the git repository?" % (base_command_name)
-            exit(1)
-
     def run(self, black_box):
 
         # TODO: implement setup_env (based on exp.run_exp())
