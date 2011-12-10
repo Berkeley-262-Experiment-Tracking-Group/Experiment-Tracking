@@ -10,3 +10,9 @@ svm_train [{dataset}]/data []/model
 svm_test [train]/model []/out
 	"test"
 	{"train"}
+writelines [test]/out []/lines
+	"writelines"
+	{"test"[all]}
+svm_plot [writelines]/lines []/plot
+	"plot"
+	{"writelines"}

@@ -52,7 +52,7 @@ def run_file(args):
             state = 'description'
             parameters = {}
             dependencies = Set()
-          #  print("command = " + command)
+            print("command = " + command)
 
         elif state == 'description':
             #Reach this point because this line should be the description line
@@ -80,7 +80,7 @@ def run_file(args):
                 state = 'description'
                 parameters = {}
                 dependencies = Set()
-                #print("command = " + command)  
+                print("command = " + command)  
             else:
                 #Check if there are any parameters specified
                 if line.find('=') != -1:
@@ -111,36 +111,43 @@ def run_file(args):
                         state = 'description'
                         parameters = {}
                         dependencies = Set()
-                        #print("command = " + command)  
+                        print("command = " + command)  
                     else:
                         index = 2
                         pos = line.find(',', index)
                         if pos == -1:
                             pos = line.find('}', index)
+                        if line.find('[all]',index,pos) != -1:
+                            pos = pos - 5
+                            all = True
+                        else:
+                            all = False
                         while pos != -1:
-                            #Two problems here: need to deal w/ {all}
-                                   
-                            #Two cases: either the dependency refers to a description or to a parameter
+                            #print("index = " + str(index))
+                            #print("pos = " + str(pos))
                             if line[index] == '"':
                                 d = eval(line[index:pos]).strip()
                                 if d in nodes:
-                                    dependencies.add(d)
+                                    dependencies.add((d,all))
                                 else:
                                     print('Error in line ' + str(count) + ' of ' + args.file + ':All dependencies must have been previously definied.')
                                     exit(-1)
-                            else:
+                            else:                                    
                                 param = line[index:pos]
+                                #print(index)
+                                #print(pos)
+                                #print(param)
                                 if param in parameters and isinstance(parameters[param],str):
                                     d = parameters[param]
                                     if d in nodes:
-                                        dependencies.add(d)
+                                        dependencies.add((d,all))
                                     else:
                                         print('Error in line ' + str(count) + ' of ' + args.file + ': All dependencies must have been previously definied.')
                                         exit(-1)
                                 else:
-                                    print('Error in line ' + str(count) + ' of ' + args.file + ': Dependencies should be either descriptions of other experiments enclosed in quotation marks or names of string parameters defined for this experiment.\n')
+                                    print('Error in line ' + str(count) + ' of ' + args.file + '(' + line + '): Dependencies should be either descriptions of other experiments enclosed in quotation marks or names of string parameters defined for this experiment.\n')
                                     exit(-1)
-                            if line[pos] == '}':
+                            if line[pos] == '}' or (all and line[pos+5] == '}'):
                                 break
                             index = pos+1
                             pos = line.find(',', index)
@@ -148,6 +155,7 @@ def run_file(args):
                                 pos = line.find('}', index)
    # print("Finish " + command + " (desc = " + desc + ")")
     check_dependencies(parameters,desc,commit, command,None,dependencies)
+    printDag()
     
 def printDag():
     print("The following is the structure of the dag...")
@@ -174,22 +182,30 @@ def check_dependencies(parameters,desc,commit,command,dependencies,dependencies_
         #print dependencies
         check_parameters({},parameters,desc,commit,command,dependencies)
         return
-    dep = dependencies_to_search.pop()
-    if len(nodes[dep]) == 1:
+    this_dependencies_to_search = dependencies_to_search.copy()
+    (dep,all) = this_dependencies_to_search.pop()
+    if dependencies == None:
+        this_dependencies = Set()
+    else:
+        this_dependencies = dependecies.copy()
+    if len(nodes[dep]) == 1: #all=True here doens't make sense so don't check for it
         #Don't need to worry about creating multiple nodes for this dependency
         #Add the actual node, not just name
-        if dependencies == None:
-            dependencies = Set()
         for d in  nodes[dep]:
-            dependencies.add(d)
-        check_dependencies(parameters, desc, commit, command, dependencies, dependencies_to_search)
+            this_dependencies.add(d)
+        check_dependencies(parameters, desc, commit, command, this_dependencies, this_dependencies_to_search)
     else:
-        if dependencies == None:
-            dependencies = Set()
-        for d in nodes[dep]:
-            dependencies.add(d)
-            check_dependencies(parameters,desc,commit,command, dependencies, dependencies_to_search)
-            dependencies.remove(d)
+        if all:
+            print("Consolidating becaues of an 'all'")
+            print(nodes[dep])
+            this_dependencies = this_dependencies.union(nodes[dep])
+            print this_dependencies
+            check_dependencies(parameters,desc,commit,command, this_dependencies, this_dependencies_to_search)
+        else:
+            for d in nodes[dep]:
+                this_dependencies.add(d)
+                check_dependencies(parameters,desc,commit,command, this_dependencies,this_dependencies_to_search)
+                this_dependencies.remove(d)
 
 def check_parameters(parameters_searched, parameters_to_search, desc, commit, command, dependencies):
     this_parameters_to_search = copy.deepcopy(parameters_to_search)
