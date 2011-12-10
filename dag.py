@@ -190,6 +190,8 @@ class dag_node:
 
             if self.rerun == True:
                 self.info['run_state'] = RUN_STATE_VIRGIN
+                self.info['return_code'] = None
+                self.info['date'] = time.time()
                 shutil.rmtree(self.exp_results)
 
 
