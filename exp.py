@@ -487,7 +487,11 @@ def recursive_has_key(d, k, deps):
 def read_descrs(keep_unreadable=False, keep_unfinished=False, keep_failed=False,
                 keep_broken_deps=False):
     resultsdir = os.path.join(abs_root_path(), RESULTS_PATH)
-    exp_dirs = os.listdir(resultsdir)
+
+    try:
+        exp_dirs = os.listdir(resultsdir)
+    except OSError:
+        exp_dirs = []
 
     exps = []
 

@@ -1,6 +1,7 @@
 import subprocess
 import os
 import time
+import shutil
 import exp
 
 # TODO: distinguish different failure modes
@@ -63,7 +64,6 @@ class dag:
         for node in self.dag_nodes:
             if node.is_runnable():
                 node.run(self.backend)
-        return jobs_run
 
     def finished_running(self):
         for node in self.dag_nodes:
@@ -71,11 +71,10 @@ class dag:
                 return RUN_STATE_RUNNING
             
             else:
-                exp.save_descr(os.path.join(self.exp_path, DESCR_FILE), info)
+                exp.save_descr(os.path.join(node.exp_results, DESCR_FILE), node.info)
                 if node.info['run_state'] == RUN_STATE_FAIL:
                     return RUN_STATE_FAIL
-                else:
-                    return RUN_STATE_SUCCESS
+        return RUN_STATE_SUCCESS
 
 class dag_node:
      
@@ -92,11 +91,11 @@ class dag_node:
                    self.working_dir + str(len(command)) + self.new_cmd)
 
 	self.resultsdir = os.path.join(rootdir, RESULTS_PATH)
-      	self.exp_path = os.path.join(self.resultsdir, self.hsh)
+      	self.exp_results = os.path.join(self.resultsdir, self.hsh)
         self.expdir = os.path.join(rootdir, EXP_PATH, self.hsh)
 
 	self.new_cmd = self.new_cmd + ' | tee {}/log 2>&1'
-	self.new_cmd = self.new_cmd.replace('{}', self.exp_path)
+	self.new_cmd = self.new_cmd.replace('{}', self.exp_results)
 
         # DAG structure pointers
         self.parents = set()
@@ -136,8 +135,7 @@ class dag_node:
 
             self.info['run_state'] = RUN_STATE_VIRGIN
             self.info['return_code'] = None
-
-        
+      
 
         self.jobid = None
 
@@ -155,7 +153,7 @@ class dag_node:
 
     def is_runnable(self):
         parents_succeeded = all([p.info['run_state'] == RUN_STATE_SUCCESS for p in self.parents])
-        return self.info['run_state'] == RUN_STATE_VIRGIN and parents_succeded
+        return self.info['run_state'] == RUN_STATE_VIRGIN and parents_succeeded
 
     def fill_in_dependencies(self):
 	#Empty function. Fill in self.new_cmd based on the hashes of parents. Basically replace "expname" by "resultsdir/hash" or sth
@@ -167,21 +165,24 @@ class dag_node:
 	# Since the experiment has not been run before, assuming the corresponding directories
 	# don't exist
         
-	#fill in dependencies in newcmd. Big TODO
-	self.new_cmd=self.fill_in_dependencies();
+	# fill in dependencies in newcmd. Big TODO
+	# self.new_cmd=self.fill_in_dependencies();
 
 	# Create results directory if it doesn't exist
 	if not os.path.isdir(self.resultsdir):
             os.mkdir(self.resultsdir)
 	
 	# Make the results directory for this experiment
-	os.mkdir(self.exp_path)
+        if not os.path.isdir(self.exp_results):
+            os.mkdir(self.exp_results)
 	
 	# Save the description and info
-	exp.save_descr(os.path.join(self.exp_path, DESCR_FILE), info);
+	exp.save_descr(os.path.join(self.exp_results, DESCR_FILE), self.info);
 
 	# Make the experiment directories and checkout code. Do it here so that 
 	# you fail in the root node of the cluster, if you fail
+        if os.path.isdir(self.expdir):
+            shutil.rmtree(self.expdir)
 	try:
             os.mkdir(self.expdir)
         except OSError:
@@ -216,16 +217,16 @@ class dag_node:
         self.setup_env()
 
         print "run - executing command"
-        if node.code is not None:
+        if self.info['code'] is not None:
             try:
-                node.info['return_code'] = eval(node.code)
-                node.info['run_state'] = RUN_STATE_SUCCESS
+                self.info['return_code'] = eval(self.info['code'])
+                self.info['run_state'] = RUN_STATE_SUCCESS
             except:
-                node.info['run_state'] = RUN_STATE_FAIL
+                self.info['run_state'] = RUN_STATE_FAIL
         else:
-            self.jobid = black_box.run(node)
-            node.info['run_state'] = RUN_STATE_RUNNING
+            self.jobid = black_box.run(self)
+            self.info['run_state'] = RUN_STATE_RUNNING
 
     def clean_up_run(self):
-        shutil.rmtree(expdir)          
+        shutil.rmtree(self.expdir)          
 
