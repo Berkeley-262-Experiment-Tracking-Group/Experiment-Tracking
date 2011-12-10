@@ -34,6 +34,16 @@ def expand_command(cmd, params, parent_nodes = None, have_loaded_all=False):
     if params is not None:
         used_params = dict.fromkeys(params.keys(), False)
 
+    # Ugly: Parse parameters with square brackets
+    def sqr_expander(m):
+         if(m.group(1) not in params):
+            print 'Error: Cant find parameter {}'.format(m.group(1))
+            exit(1)
+         used_params[m.group(1)] = True
+         return str(params[m.group(1)])
+    cmd_new = re.sub('[(.*?)]', sqr_expander, cmd)
+    
+    
     def expander(m):
         
         if m.group(1) == '':
@@ -85,7 +95,7 @@ def expand_command(cmd, params, parent_nodes = None, have_loaded_all=False):
             deps.append(matched_exps[0].hsh)
             return os.path.join(util.abs_root_path(), RESULTS_PATH, matched_exps[0].hsh)
 
-    expanded_cmd = (re.sub('{(.*?)}', expander, cmd), deps)
+    expanded_cmd = (re.sub('{(.*?)}', expander, cmd_new), deps)
 
     if params is not None and not all(used_params.values()):
         print 'Warning: not all parameters were used'
