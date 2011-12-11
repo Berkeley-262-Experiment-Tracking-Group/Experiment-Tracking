@@ -90,11 +90,15 @@ def run_file(args):
                         pos = line.find('=', index)
                         comma = line.find(',', pos)#This will work for numbers and strings without commas
                         if comma != -1:
+                            
                             if line.find('[', pos,comma):#Deal with lists
                                 openBracket = line.find('[', pos,comma)
                                 closeBracket = line.find(']', openBracket+1)
                                 comma = line.find(',', closeBracket)
+                                if(comma==-1):
+                                    comma=closeBracket+1
                             parameters[line[index:pos].strip()] = eval(line[pos+1:comma])
+                            
                             index = comma+1
                         else:
                             newline = line.find('\n', pos)
@@ -249,7 +253,13 @@ def check_parameters(parameters_searched, parameters_to_search, desc, commit, co
     else:
      #   print("ready to make node, parameters = ")
      #   print(parameters_searched)
-        newNode = dag_node(desc,parameters_searched,commit,command, None, dependencies)
+        
+        #if command starts with @, it is a macro
+        if(command[0]=='@'):
+            code=command[1:]
+            newNode = dag_node(desc,parameters_searched,commit,None, code, dependencies)
+        else:
+            newNode = dag_node(desc,parameters_searched,commit,command, None, dependencies)
     #    print("newNode = " )
     #    print newNode
     #    print("parameters = ")

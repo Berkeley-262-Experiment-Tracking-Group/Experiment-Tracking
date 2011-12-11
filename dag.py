@@ -4,7 +4,7 @@ import shutil
 import re
 
 import util, exp_common
-
+import special_macros
 # TODO: distinguish different failure modes
 [RUN_STATE_VIRGIN, RUN_STATE_RUNNING, RUN_STATE_SUCCESS, RUN_STATE_FAIL] = range(4) 
 
@@ -141,15 +141,26 @@ class dag_node:
 	self.resultsdir = os.path.join(rootdir, exp_common.RESULTS_DIR)
 	
         if self.hsh is None:        
-            self.new_cmd, deps = exp_common.expand_command(self.command, self.params, self.parents)   
-            self.hsh = util.sha1(self.commit + str(len(self.working_dir)) +
+            
+            if self.code is None:
+                self.new_cmd, deps = exp_common.expand_command(self.command, self.params, self.parents)   
+                self.hsh = util.sha1(self.commit + str(len(self.working_dir)) +
                                  self.working_dir + str(len(self.command)) + self.new_cmd)
-            self.exp_results = os.path.join(self.resultsdir, self.hsh)
-            self.expdir = os.path.join(rootdir, exp_common.EXP_DIR, self.hsh)
-            self.new_cmd = self.new_cmd + ' | tee {}/log 2>&1'
-	    self.new_cmd = self.new_cmd.replace('{}', self.exp_results)
+                self.exp_results = os.path.join(self.resultsdir, self.hsh)
+                self.expdir = os.path.join(rootdir, exp_common.EXP_DIR, self.hsh)
+                self.new_cmd = self.new_cmd + ' | tee {}/log 2>&1'
+	        self.new_cmd = self.new_cmd.replace('{}', self.exp_results)
+            else:
+                deps=[x.hsh for x in self.parents]
+                self.hsh = util.sha1(self.commit + str(len(self.working_dir)) +
+                                 self.working_dir + str(len(self.code)))
+                self.exp_results = os.path.join(self.resultsdir, self.hsh)
+                self.expdir = os.path.join(rootdir, exp_common.EXP_DIR, self.hsh)
+                self.new_cmd=None
+            
             # try to read run info from disk
             self.info = load_info(self.hsh)
+            
         else:
             self.info = load_info(self.hsh)
             if self.info is None:
@@ -170,7 +181,7 @@ class dag_node:
         # if not found, intialize from scratch
         if self.info is None:
             self.info = dict()
-
+            
             self.info['description'] = self.desc # description (string)
             self.info['working_dir'] = self.working_dir
 
@@ -282,16 +293,18 @@ class dag_node:
 
     def run(self, black_box):
 
-        # TODO: implement setup_env (based on exp.run_exp())
         self.setup_env()
 
         if self.info['code'] is not None:
             try:
-                self.info['return_code'] = eval(self.info['code'])
+                print 'Running code'
+                self.info['return_code'] = special_macros.evaluate(self.info['code'], self)
                 self.info['run_state'] = RUN_STATE_SUCCESS
             except:
                 self.info['run_state'] = RUN_STATE_FAIL
         else:
+             
+            
             self.jobid = black_box.run(self)
             self.info['run_state'] = RUN_STATE_RUNNING
 
