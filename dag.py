@@ -44,6 +44,7 @@ class dag:
         self.dag_nodes = list(reversed(self.dag_nodes_reversed))
 	for n in self.dag_nodes:
             n.visited = False
+            self.propagate_params(n)
             n.job_init()
             if n['run_state'] == RUN_STATE_SUCCESS:
                 print "Job '%s' has already completed successfully, skipping..." % (n['description'])
@@ -88,6 +89,17 @@ class dag:
                 if node.info['run_state'] == RUN_STATE_FAIL:
                     return RUN_STATE_FAIL
         return RUN_STATE_SUCCESS
+    
+    # Propagate parameters along dag. Thus each experiment has a history of the parameters of its ancestors    
+    def propagate_params(self, node):
+        for p in node.parents:
+            for param in p.params:
+                new_param=p.desc+':'+param
+                if(new_param in node.params):
+                    node.params[new_param]+=[p.params[param]]
+                else:
+                    node.params[new_param]=[p.params[param],]        
+    
   
 class dag_node:
      
