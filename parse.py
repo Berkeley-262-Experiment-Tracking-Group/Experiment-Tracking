@@ -53,7 +53,7 @@ def run_file(args):
             state = 'description'
             parameters = {}
             dependencies = Set()
-            print("command = " + command)
+           # print("command = " + command)
 
         elif state == 'description':
             #Reach this point because this line should be the description line
@@ -81,7 +81,7 @@ def run_file(args):
                 state = 'description'
                 parameters = {}
                 dependencies = Set()
-                print("command = " + command)  
+           #     print("command = " + command)  
             else:
                 #Check if there are any parameters specified
                 if line.find('=') != -1:
@@ -105,29 +105,32 @@ def run_file(args):
                     #print("dependency stage")
                     #Check for tab, if no tab then the experiement description is finished.
                     if line[0:1] != '\t':
-                        print("Finish " + command)
+                   #     print("Finish " + command)
                         check_dependencies(parameters,desc,commit, command,None,dependencies)
                         command = line.strip()
                         commit = 'HEAD' #default
                         state = 'description'
                         parameters = {}
                         dependencies = Set()
-                        print("command = " + command)  
+                    #    print("command = " + command)  
                     else:
                         index = 2
                         pos = line.find(',', index)
                         if pos == -1:
                             pos = line.find('}', index)
-                        if line.find('[all]',index,pos) != -1:
-                            pos = pos - 5
-                            all = True
-                        else:
-                            all = False
+                        
                         while pos != -1:
+                            if line.find('[all]',index,pos) != -1:
+                                pos = pos - 5
+                                all = True
+                            else:
+                                all = False
+                            #print(line[index:pos])
                             #print("index = " + str(index))
                             #print("pos = " + str(pos))
-                            if line[index] == '"':
-                                d = eval(line[index:pos]).strip()
+                            if line.find('"', index, pos) != -1:
+                                startQuote = line.find('"', index)
+                                d = eval(line[startQuote:pos]).strip()
                                 if d in nodes:
                                     dependencies.add((d,all))
                                 else:
@@ -151,10 +154,13 @@ def run_file(args):
                             if line[pos] == '}' or (all and line[pos+5] == '}'):
                                 break
                             index = pos+1
+                            if all:
+                                index = index+5
                             pos = line.find(',', index)
                             if pos == -1:
                                 pos = line.find('}', index)
-   # print("Finish " + command + " (desc = " + desc + ")")
+   # print("Finish " + command + " (desc = " + desc + ") dependencies = ")
+   # print dependencies
     check_dependencies(parameters,desc,commit, command,None,dependencies)
 
     toplevel_nodes = []
@@ -166,7 +172,6 @@ def run_file(args):
     mydag = dag(toplevel_nodes)
     mydag.backend = local_backend.local_backend()
     mydag.mainloop()
-
     
 def printDag():
     print("The following is the structure of the dag...")
@@ -198,7 +203,7 @@ def check_dependencies(parameters,desc,commit,command,dependencies,dependencies_
     if dependencies == None:
         this_dependencies = Set()
     else:
-        this_dependencies = dependecies.copy()
+        this_dependencies = dependencies.copy()
     if len(nodes[dep]) == 1: #all=True here doens't make sense so don't check for it
         #Don't need to worry about creating multiple nodes for this dependency
         #Add the actual node, not just name
@@ -207,10 +212,10 @@ def check_dependencies(parameters,desc,commit,command,dependencies,dependencies_
         check_dependencies(parameters, desc, commit, command, this_dependencies, this_dependencies_to_search)
     else:
         if all:
-            print("Consolidating becaues of an 'all'")
-            print(nodes[dep])
+          #  print("Consolidating becaues of an 'all'")
+           # print(nodes[dep])
             this_dependencies = this_dependencies.union(nodes[dep])
-            print this_dependencies
+           # print this_dependencies
             check_dependencies(parameters,desc,commit,command, this_dependencies, this_dependencies_to_search)
         else:
             for d in nodes[dep]:

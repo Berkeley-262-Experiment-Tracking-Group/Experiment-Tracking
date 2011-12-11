@@ -4,8 +4,9 @@ import re
 import util, dag
 import sys
 
-RESULTS_PATH = 'results'
-EXP_PATH = 'exp'
+DOT_DIR = '.exp'
+EXP_DIR = os.path.join(DOT_DIR, 'exp')
+RESULTS_DIR = os.path.join(DOT_DIR, 'results')
 DESCR_FILE = 'descr'
 
 # A hack. Need to do something so that all experiments aren't repeatedly read from disk.
@@ -93,7 +94,7 @@ def expand_command(cmd, params, parent_nodes = None, have_loaded_all=False):
                 print 'Using latest (%s)' % time.ctime(matched_exps[0]['date'])
 
             deps.append(matched_exps[0].hsh)
-            return os.path.join(util.abs_root_path(), RESULTS_PATH, matched_exps[0].hsh)
+            return os.path.join(util.abs_root_path(), RESULTS_DIR, matched_exps[0].hsh)
 
     expanded_cmd = (re.sub('{(.*?)}', expander, cmd_new), deps)
 
@@ -195,7 +196,7 @@ def compare(exp0, exp1):
 # should probably store some kind of index to avoid linear search
 def read_descrs(keep_unreadable=False, keep_unfinished=False, keep_failed=False,
                 keep_broken_deps=False):
-    resultsdir = os.path.join(util.abs_root_path(), RESULTS_PATH)
+    resultsdir = os.path.join(util.abs_root_path(), RESULTS_DIR)
 
     try:
         exp_dirs = os.listdir(resultsdir)

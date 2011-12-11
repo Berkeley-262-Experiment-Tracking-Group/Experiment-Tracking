@@ -9,43 +9,6 @@
 # Other niceties may be added as useful.
 #
 
-# TODO
-#  - should remove write permissions on results directories
-#  - parallelization
-#  - job queue
-#  - automatic jobs
-#  - above should be managed separately?
-#  - exp repeat for repeating experiments with new code
-#  - exp purge --keep-latest for removing redundant data
-#  - what should happen when an experiment fails?
-#  - directory sharing for parallel experiments
-#  - collapse exp list output a bit
-#  - exp hash/exp results
-#  - exp show
-#  - check on running experiments
-#  - don't allow running experiments with broken dependencies
-#  - organize this code
-#  - check for newer dependencies
-#  - use tag names where available
-#  - fix params typing mess
-#  - exp table for printing tables of a v b where a, b in {code, command, params...}
-#  - does find_latest always do the right thing?
-#  - fill in previous parameters correctly
-#  - exp run --dry-run
-#  - fix horrible inefficiencies in exp list &c
-#  - matching for exp list
-#  - keep track of/fill in --subdir-only option
-#  - add a third, more compact display?
-#  - exp status for seeing running and completed experiments
-#  - piping to 'head' creates a broken pipe error
-#  - don't filter out running experiments when filling in previously used arguments
-#  - there seems to be a bug in exp run --rerun that doesn't remove directories the first time
-#  - keep track of where experiments are running
-#  - exp show: remove constant columns, add options for showing/sorting columns
-#  - exp show: display available files
-#  - exp register
-#  - unified messages and verbosity levels
-#  - fix plural/singular confusion in messages
 
 import subprocess
 import sys
@@ -63,7 +26,6 @@ from exp_common import *
 RESULTS_PATH = 'results'
 EXP_PATH = 'exp'
 DESCR_FILE = 'descr'
-
 
 def parse_params(params_str):
     """Parse a parameter in the string in the from 'k1:v1 k2:v2 ...' into
