@@ -41,7 +41,7 @@ def expand_command(cmd, params, parent_nodes = None, have_loaded_all=False):
             exit(1)
          used_params[m.group(1)] = True
          return str(params[m.group(1)])
-    cmd_new = re.sub('[(.*?)]', sqr_expander, cmd)
+    cmd_new = re.sub('\[(.*?)\]', sqr_expander, cmd)
     
     
     def expander(m):

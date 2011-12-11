@@ -26,7 +26,8 @@
 #seperate different values for that parameter. There is a case where the
 #parameter is actually supposed to be a list. This will case problems.
 
-from dag import dag_node
+from dag import dag_node, dag
+import local_backend
 from sets import Set
 import argparse
 import copy
@@ -155,7 +156,17 @@ def run_file(args):
                                 pos = line.find('}', index)
    # print("Finish " + command + " (desc = " + desc + ")")
     check_dependencies(parameters,desc,commit, command,None,dependencies)
-    printDag()
+
+    toplevel_nodes = []
+    for nodeGroup in nodes:
+        for node in nodes[nodeGroup]:
+            if not node.parents:
+                toplevel_nodes += [node]
+
+    mydag = dag(toplevel_nodes)
+    mydag.backend = local_backend.local_backend()
+    mydag.mainloop()
+
     
 def printDag():
     print("The following is the structure of the dag...")
