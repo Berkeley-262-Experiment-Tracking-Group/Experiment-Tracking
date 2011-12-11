@@ -23,7 +23,7 @@ def load_info(hsh):
     """Load info about an experiment as saved by save_descr"""
     try:
         f = open(os.path.join(util.abs_root_path(), 
-                              exp_common.RESULTS_PATH, hsh, exp_common.DESCR_FILE))
+                              exp_common.RESULTS_DIR, hsh, exp_common.DESCR_FILE))
     except IOError as e:
         return None
     else:
@@ -138,14 +138,14 @@ class dag_node:
         rootdir = util.abs_root_path()
         self.rootdir=rootdir
         self.working_dir = os.path.relpath(os.getcwd(), rootdir)
-	self.resultsdir = os.path.join(rootdir, exp_common.RESULTS_PATH)
+	self.resultsdir = os.path.join(rootdir, exp_common.RESULTS_DIR)
 	
         if self.hsh is None:        
             self.new_cmd, deps = exp_common.expand_command(self.command, self.params, self.parents)   
             self.hsh = util.sha1(self.commit + str(len(self.working_dir)) +
                                  self.working_dir + str(len(self.command)) + self.new_cmd)
             self.exp_results = os.path.join(self.resultsdir, self.hsh)
-            self.expdir = os.path.join(rootdir, exp_common.EXP_PATH, self.hsh)
+            self.expdir = os.path.join(rootdir, exp_common.EXP_DIR, self.hsh)
             self.new_cmd = self.new_cmd + ' | tee {}/log 2>&1'
 	    self.new_cmd = self.new_cmd.replace('{}', self.exp_results)
             # try to read run info from disk
@@ -160,7 +160,7 @@ class dag_node:
             #exp_common.expand_command(self.info["command"], self.info["params"], self.deps())   
             self.desc = self.info['description']
             self.exp_results = os.path.join(self.resultsdir, self.hsh)
-            self.expdir = os.path.join(rootdir, exp_common.EXP_PATH, self.hsh)
+            self.expdir = os.path.join(rootdir, exp_common.EXP_DIR, self.hsh)
 
 	
       	
@@ -238,18 +238,13 @@ class dag_node:
 	# fill in dependencies in newcmd. Big TODO
 	# self.new_cmd=self.fill_in_dependencies();
 
-	# Create results directory if it doesn't exist
-	if not os.path.isdir(self.resultsdir):
-            os.mkdir(self.resultsdir)
-
-	
 	# Create experiments directory if it doesn't exist
-	if not os.path.isdir(os.path.join(self.rootdir, exp_common.EXP_PATH)):
-	    os.mkdir(os.path.join(self.rootdir, exp_common.EXP_PATH))
+	if not os.path.isdir(os.path.join(self.rootdir, exp_common.EXP_DIR)):
+	    os.makedirs(os.path.join(self.rootdir, exp_common.EXP_DIR))
 	    
 	# Make the results directory for this experiment
         if not os.path.isdir(self.exp_results):
-            os.mkdir(self.exp_results)
+            os.makedirs(self.exp_results)
 	
 	# Save the description and info
 	save_descr(os.path.join(self.exp_results, exp_common.DESCR_FILE), self.info);
@@ -336,7 +331,7 @@ class dag_node:
         return self.find_deps(name)[0]
 
     def filename(self, name):
-        return os.path.join(abs_root_path(), RESULTS_PATH, self.hsh, name)
+        return os.path.join(abs_root_path(), RESULTS_DIR, self.hsh, name)
 
     def param(self, name):
         return self.info['params'][name]
