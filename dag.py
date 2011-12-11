@@ -44,6 +44,7 @@ class dag:
         self.dag_nodes = list(reversed(self.dag_nodes_reversed))
 	for n in self.dag_nodes:
             n.visited = False
+            
             self.propagate_params(n)
             n.job_init()
             if n['run_state'] == RUN_STATE_SUCCESS:
@@ -100,7 +101,7 @@ class dag:
                 if(new_param in node.params):
                     node.params[new_param]+=[p.params[param]]
                 else:
-                    node.params[new_param]=p.params[param]        
+                    node.params[new_param]=[p.params[param]]        
     
   
 class dag_node:

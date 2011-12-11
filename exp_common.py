@@ -8,6 +8,8 @@ DOT_DIR = '.exp'
 EXP_DIR = os.path.join(DOT_DIR, 'exp')
 RESULTS_DIR = os.path.join(DOT_DIR, 'results')
 DESCR_FILE = 'descr'
+TASK_DIR = os.path.join(DOT_DIR, 'tasks')
+TASK_COMMIT_FILE='commit'
 
 # A hack. Need to do something so that all experiments aren't repeatedly read from disk.
 all_nodes=None

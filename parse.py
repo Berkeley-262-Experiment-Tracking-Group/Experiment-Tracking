@@ -31,13 +31,16 @@ import local_backend
 from sets import Set
 import argparse
 import copy
-
+import util
+import shutil
+import os
+import exp_common
 nodes = {}
 
 
 
-def run_file(args):
-    f = open(args.file, 'r');
+def parse_file(filename):
+    f = open(filename, 'r');
     state = 'start' 
                         
     #nodes is a dictionary mapping descriptions to dag_node objects.
@@ -167,15 +170,6 @@ def run_file(args):
    # print dependencies
     check_dependencies(parameters,desc,commit, command,None,dependencies)
 
-    toplevel_nodes = []
-    for nodeGroup in nodes:
-        for node in nodes[nodeGroup]:
-            if not node.parents:
-                toplevel_nodes += [node]
-
-    mydag = dag(toplevel_nodes)
-    mydag.backend = local_backend.local_backend()
-    mydag.mainloop()
     
 def printDag():
     print("The following is the structure of the dag...")
@@ -277,6 +271,108 @@ def check_parameters(parameters_searched, parameters_to_search, desc, commit, co
         if dependencies != None:
             for d in dependencies:
                 d.add_children(newNodeSet)
+ 
+
+
+###### Functions to save the 'task'
+
+# Functions to fill in a 'HEAD' commit in all nodes    
+def fill_in_commit(new_commit):
+    for nodeGroup in nodes:
+        for node in nodes[nodeGroup]:
+             if(node.commit=='HEAD'):
+                 node.commit=new_commit
+
+# Run a dag
+def run():
+    toplevel_nodes = []
+    for nodeGroup in nodes:
+        for node in nodes[nodeGroup]:
+            if not node.parents:
+                toplevel_nodes += [node]
+
+    mydag = dag(toplevel_nodes)
+    mydag.backend = local_backend.local_backend()
+    mydag.mainloop()
+
+# Save the task. Creates a directory containing the file and another file containing the commit.
+def save_task(filename, commit):
+    task_id=1
+    rootdir=util.abs_root_path()
+    taskdir=os.path.join(rootdir, exp_common.TASK_DIR)
+    if not os.path.isdir(taskdir):
+        if not os.path.isdir(exp_common.DOT_DIR):
+            os.mkdir(exp_common.DOT_DIR)
+        os.mkdir(taskdir)
+    else:
+        a=[int(x) for x in os.listdir(taskdir)];
+        task_id=max(a)+1
+    try:    
+        os.mkdir(os.path.join(taskdir, str(task_id)))
+    except:
+        print 'Could not create task directory. Aborting'
+        exit(1)
+        
+    
+    shutil.copy(filename, os.path.join(taskdir, str(task_id)))
+    new_filename=os.path.join(taskdir, str(task_id),filename)
+    task_namespace=dict()
+    task_namespace['commit']=commit
+    task_namespace['filename']=filename
+    with open(os.path.join(taskdir, str(task_id), exp_common.TASK_COMMIT_FILE),'w') as f:
+        f.write(repr(task_namespace))
+        f.write('\n')
+        
+    return task_id
+
+# Loads a particular task
+def load_task(task_id):
+    rootdir=util.abs_root_path()
+    taskdir=os.path.join(rootdir, exp_common.TASK_DIR)
+    taskfilename=os.path.join(taskdir, str(task_id), exp_common.TASK_COMMIT_FILE)
+    try:
+        f=open(taskfilename)
+    except:
+        print 'Could not access task file {}'.format(taskfilename)
+        exit(1)
+    task_namespace=eval(f.read())
+    return (task_namespace['filename'], task_namespace['commit'])
+
+# Run a file
+def run_file(args):
+    filename=args.file
+    
+    #Parse the file 
+    parse_file(filename)
+    
+    # Get the current commit hash
+    commit=util.exec_output(['git', 'rev-parse', 'HEAD']).strip()
+    
+    # Fill in this commit wherever HEAD occurs
+    
+    fill_in_commit(commit)
+   
+    # Create a new task
+    task_id=save_task(filename, commit)
+    print 'The id for this task is {}'.format(str(task_id))
+   
+    # Start running
+    run()
+
+# Run an old task
+def run_old_task(args):
+    task_id=int(args.taskid)
+    
+    # Load the task
+    (filename, commit)=load_task(task_id)
+    
+    # Parse the file
+    parse_file(filename)
+    
+    #Fill in commit
+    fill_in_commit(commit)
+    run()
+
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run experiements with dependencies described in a file and track content created by code')
@@ -285,6 +381,10 @@ if __name__ == '__main__':
     runfile = subparsers.add_parser('runfile', help='run all the experiements described in a file')
     runfile.add_argument('file', help='file from which all experiments should be run')
     runfile.set_defaults(func=run_file)
+    
+    runtask = subparsers.add_parser('runtask', help='run all the experiements from an old task')
+    runtask.add_argument('taskid', help='id of the task')
+    runtask.set_defaults(func=run_old_task)
     
     args = parser.parse_args()
     args.func(args)
