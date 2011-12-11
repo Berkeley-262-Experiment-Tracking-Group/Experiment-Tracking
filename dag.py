@@ -90,7 +90,9 @@ class dag:
                     return RUN_STATE_FAIL
         return RUN_STATE_SUCCESS
     
-    # Propagate parameters along dag. Thus each experiment has a history of the parameters of its ancestors    
+    # Propagate parameters along dag. Thus each experiment has a history of the parameters of its ancestors 
+    # Important note: the propagated parameters have values  that are lists, to allow for multiple parents with the same descr 
+    # There must be a more 'pythonic' way
     def propagate_params(self, node):
         for p in node.parents:
             for param in p.params:
@@ -98,7 +100,7 @@ class dag:
                 if(new_param in node.params):
                     node.params[new_param]+=[p.params[param]]
                 else:
-                    node.params[new_param]=[p.params[param],]        
+                    node.params[new_param]=p.params[param]        
     
   
 class dag_node:
