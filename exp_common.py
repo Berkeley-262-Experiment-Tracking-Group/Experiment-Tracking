@@ -100,7 +100,17 @@ def expand_command(cmd, params, parent_nodes = None, have_loaded_all=False):
 
     expanded_cmd = (re.sub('{(.*?)}', expander, cmd_new), deps)
 
-    if params is not None and not all(used_params.values()):
+    # Warn the user if explicitly specified parameters go unsed, but
+    # don't warn about implicit parameters (i.e. parameters inherited
+    # from parents)
+    keys_used = zip(params.keys(), used_params.values())
+    explicit_key = lambda (key_used): ':' not in key_used[0]
+    only_explicit = filter(explicit_key, keys_used)
+    used_explicit_params = ()
+    explicit_keys = ()
+    if only_explicit:
+        explicit_keys, used_explicit_params = zip(*only_explicit)
+    if not all(used_explicit_params):
         print 'Warning: not all parameters were used'
 
     return expanded_cmd
