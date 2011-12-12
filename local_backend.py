@@ -8,10 +8,10 @@ import sys
 class local_backend:
 
     # write a bash cscript. Basically prints out exit status 
-    def write_bash_script(self, filename, command):
-	f=open(filename, 'w')
+    def write_bash_script(self, filename, command, cwd):
+    	f=open(filename, 'w')
 	f.write('#!/bin/bash\n')
-	f.write('./' +command+'\n')
+	f.write('/usr/bin/env PATH=$PATH:'+cwd+' ' +command+'\n')
 	f.write('echo $?\n')
 	f.close()
 
@@ -25,7 +25,7 @@ class local_backend:
 
         # Write bash script
 	filename=os.path.join(node.expdir, node.hsh+'.sh')
-	self.write_bash_script(filename, node.new_cmd)
+	self.write_bash_script(filename, node.new_cmd, os.getcwd())
         run_command = (filename + ' | tee %s/log 2>&1') % (node.exp_results)
 
 	os.system('chmod 700 '+filename)
