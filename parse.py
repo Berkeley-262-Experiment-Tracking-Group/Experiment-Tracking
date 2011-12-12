@@ -94,7 +94,7 @@ def parse_file(filename):
                         comma = line.find(',', pos)#This will work for numbers and strings without commas
                         if comma != -1:
                             
-                            if line.find('[', pos,comma):#Deal with lists
+                            if '[' in line[pos:comma]:#line.find('[', pos,comma):#Deal with lists
                                 openBracket = line.find('[', pos,comma)
                                 closeBracket = line.find(']', openBracket+1)
                                 comma = line.find(',', closeBracket)
