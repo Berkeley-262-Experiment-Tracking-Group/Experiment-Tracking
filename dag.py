@@ -92,6 +92,7 @@ class dag:
     # Propagate parameters along dag. Thus each experiment has a history of the parameters of its ancestors 
     # Important note: the propagated parameters have values  that are lists, to allow for multiple parents with the same descr 
     # There must be a more 'pythonic' way
+
     def propagate_params(self, node):
         for p in node.parents:
             for param in p.params:
@@ -99,8 +100,8 @@ class dag:
                 if(new_param in node.params):
                     node.params[new_param]+=[p.params[param]]
                 else:
-                    node.params[new_param]=[p.params[param]]        
-    
+                    node.params[new_param]=[p.params[param]] 
+
   
 class dag_node:
      
@@ -161,6 +162,7 @@ class dag_node:
                                  self.working_dir + str(len(self.command)) + self.new_cmd)
                 self.exp_results = os.path.join(self.resultsdir, self.hsh)
                 self.expdir = os.path.join(rootdir, exp_common.EXP_DIR, self.hsh)
+                self.new_cmd = self.new_cmd.replace('{}', self.exp_results)
             else:
                 deps=[x.hsh for x in self.parents]
                 self.hsh = util.sha1(self.commit + str(len(self.working_dir)) +
@@ -314,8 +316,6 @@ class dag_node:
             except:
                 self.info['run_state'] = RUN_STATE_FAIL
         else:
-             
-            
             self.jobid = black_box.run(self)
             self.info['run_state'] = RUN_STATE_RUNNING
 

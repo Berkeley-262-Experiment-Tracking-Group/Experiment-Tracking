@@ -26,8 +26,8 @@ class local_backend:
         # Write bash script
 	filename=os.path.join(node.expdir, node.hsh+'.sh')
 	self.write_bash_script(filename, node.new_cmd)
-        run_command = filename + ' | tee {}/log 2>&1'
-        run_command = run_command.replace('{}', node.exp_results)
+        run_command = (filename + ' | tee %s/log 2>&1') % (node.exp_results)
+
 	os.system('chmod 700 '+filename)
 
         # run the experiment
