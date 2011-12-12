@@ -26,15 +26,15 @@
 #seperate different values for that parameter. There is a case where the
 #parameter is actually supposed to be a list. This will case problems.
 
-from dag import dag_node, dag
-import local_backend
 from sets import Set
 import argparse
 import copy
-import util
 import shutil
 import os
 import exp_common
+
+import util, dag, local_backend
+
 nodes = {}
 
 
@@ -251,9 +251,9 @@ def check_parameters(parameters_searched, parameters_to_search, desc, commit, co
         #if command starts with @, it is a macro
         if(command[0]=='@'):
             code=command[1:]
-            newNode = dag_node(desc,parameters_searched,commit,None, code, dependencies)
+            newNode = dag.dag_node(desc,parameters_searched,commit,None, code, dependencies)
         else:
-            newNode = dag_node(desc,parameters_searched,commit,command, None, dependencies)
+            newNode = dag.dag_node(desc,parameters_searched,commit,command, None, dependencies)
     #    print("newNode = " )
     #    print newNode
     #    print("parameters = ")
@@ -291,9 +291,15 @@ def run():
             if not node.parents:
                 toplevel_nodes += [node]
 
-    mydag = dag(toplevel_nodes)
+    mydag = dag.dag(toplevel_nodes)
     mydag.backend = local_backend.local_backend()
-    mydag.mainloop()
+    status = mydag.mainloop()
+    if status == dag.RUN_STATE_SUCCESS:
+        print "Task completed successfully."
+    elif status == dag.RUN_STATE_FAIL:
+        print "Task failed!"
+    else:
+        print "Unrecognized exit status"
 
 # Save the task. Creates a directory containing the file and another file containing the commit.
 def save_task(filename, commit):
@@ -319,6 +325,7 @@ def save_task(filename, commit):
     task_namespace=dict()
     task_namespace['commit']=commit
     task_namespace['filename']=filename
+    print "task file is", os.path.join(taskdir, str(task_id), exp_common.TASK_COMMIT_FILE)
     with open(os.path.join(taskdir, str(task_id), exp_common.TASK_COMMIT_FILE),'w') as f:
         f.write(repr(task_namespace))
         f.write('\n')

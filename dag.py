@@ -71,8 +71,6 @@ class dag:
             if node.info['run_state'] == RUN_STATE_RUNNING:
                 node.info['run_state'], node.info['return_code'] = self.backend.get_state(node)
                 if node.info['run_state'] != RUN_STATE_RUNNING:
-                    
-                    print "cleaning up"
                     node.clean_up_run()
                 
     def run_runnable_jobs(self):
@@ -163,8 +161,6 @@ class dag_node:
                                  self.working_dir + str(len(self.command)) + self.new_cmd)
                 self.exp_results = os.path.join(self.resultsdir, self.hsh)
                 self.expdir = os.path.join(rootdir, exp_common.EXP_DIR, self.hsh)
-                self.new_cmd = self.new_cmd + ' | tee {}/log 2>&1'
-	        self.new_cmd = self.new_cmd.replace('{}', self.exp_results)
             else:
                 deps=[x.hsh for x in self.parents]
                 self.hsh = util.sha1(self.commit + str(len(self.working_dir)) +

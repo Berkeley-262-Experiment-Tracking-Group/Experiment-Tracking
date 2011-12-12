@@ -3,8 +3,17 @@ import os
 import subprocess
 import dag, util
 import time
+import sys
 
 class local_backend:
+
+    # write a bash cscript. Basically prints out exit status 
+    def write_bash_script(self, filename, command):
+	f=open(filename, 'w')
+	f.write('#!/bin/bash\n')
+	f.write('./' +command+'\n')
+	f.write('echo $?\n')
+	f.close()
 
     def __init__(self):
         pass
@@ -14,10 +23,17 @@ class local_backend:
         # go to the experimental directory
         os.chdir(os.path.join(node.expdir, node.working_dir))
 
+        # Write bash script
+	filename=os.path.join(node.expdir, node.hsh+'.sh')
+	self.write_bash_script(filename, node.new_cmd)
+        run_command = filename + ' | tee {}/log 2>&1'
+        run_command = run_command.replace('{}', node.exp_results)
+	os.system('chmod 700 '+filename)
+
         # run the experiment
         print 'Running command ' + node.new_cmd + ' in directory ' + os.getcwd()
         
-        node.jobid = subprocess.Popen(node.new_cmd, shell = True)
+        node.jobid = subprocess.Popen(run_command, shell=True)
         return node.jobid
 
     def get_state(self, node):
@@ -25,16 +41,21 @@ class local_backend:
             return node.info['run_state']
         else:
             return_code = node.jobid.poll()
+
             if return_code is None:
                 return dag.RUN_STATE_RUNNING, return_code
-            elif return_code == 0:
+
+            logfile=os.path.join(node.exp_results, 'log')
+            with open(logfile) as f:
+		status=int(list(f)[-1])
+            if status == 0:
                 print "Command '%s' exited with status %d." \
-                    % (node.new_cmd, return_code)
+                    % (node.new_cmd, status)
                 node.info['date_end'] = time.time()
-                return dag.RUN_STATE_SUCCESS, return_code            
+                return dag.RUN_STATE_SUCCESS, status            
             else:
                 print "Command '%s' exited with status %d" \
-                    % (node.new_cmd, return_code)
-                return dag.RUN_STATE_FAIL, return_code
+                    % (node.new_cmd, status)
+                return dag.RUN_STATE_FAIL, status
 
 
