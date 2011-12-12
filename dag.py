@@ -98,11 +98,16 @@ class dag:
             for param in p.params:
                 new_param=p.desc+':'+param
                 if(new_param in node.params):
-                    node.params[new_param]+=[p.params[param]]
-                else:
-                    node.params[new_param]=[p.params[param]] 
 
-  
+                    # The first time we see a parameter, it's stored
+                    # as a singleton. The second time, we make it into
+                    # a list.
+                    if not isinstance(node.params[new_param], list):
+                        node.params[new_param] = [node.params[new_param]]
+                    node.params[new_param] += [p.params[param]]
+                else:
+                    node.params[new_param]=p.params[param]
+    
 class dag_node:
      
     def __init__(self, desc=None, params={}, commit=None, command = None, code = None, parents = None, children = None, rerun = False, subdir_only = False, hsh = None):
