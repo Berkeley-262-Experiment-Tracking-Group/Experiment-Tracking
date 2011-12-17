@@ -49,6 +49,11 @@ def parse_file(filename):
         count = count+1
         if line.strip() == '':
             continue
+
+        # treat lines starting with '#' as comments
+        if line.strip()[0] == '#':
+            continue
+
         if state == 'start':
             #This will only be executed once 
             command = line.strip()
