@@ -1,7 +1,9 @@
 import dag
 import os
+import csv
+
 #List of macros
-macro_list=['produce_output_list_macro', 'produce_annotated_list_macro', 'produce_parameter_map_macro', 'produce_all_map_macro']
+macro_list=['produce_output_list_macro', 'produce_annotated_list_macro', 'produce_parameter_map_macro', 'produce_all_map_macro', 'compute_percentiles_macro']
 
 # Creates a file containing all output directories.
 def produce_output_list_macro(node):
@@ -43,16 +45,16 @@ def produce_parameter_map_macro(node, param_name):
         print "done."
 
 
-def produce_all_map_macro(node, outfile):
-    output_path=os.path.join(node.exp_results, 'param_out')
+def produce_all_map_macro(node, infile, outfile):
+    output_path=os.path.join(node.exp_results, outfile)
     header=False
     with open(output_path, 'w') as f:
         print "writing parameter map to file %s ..." % (output_path),
         for x in node.parents:
             try:
-                fi = open(os.path.join(x.exp_results, outfile), 'r')
+                fi = open(os.path.join(x.exp_results, infile), 'r')
             except IOError:
-                print "Error: could not open output file '%s' from job '%s'" % (os.path.join(x.exp_results, 'out'), x.info['description'])
+                print "Error: could not open input file '%s' from job '%s'" % (os.path.join(x.exp_results, infile), x.info['description'])
                 exit(1)
             if not header:
                 f.write('# ')
@@ -64,7 +66,6 @@ def produce_all_map_macro(node, outfile):
             for param_key in x.params:
                 val=x.params[param_key]
                 if(isinstance(val,type('string'))):
-                    print "here2"
                     f.write('"'+val+'" ')
                 else:
                     f.write(str(val)+' ')
@@ -75,35 +76,42 @@ def produce_all_map_macro(node, outfile):
         f.close()
         print "done."
 
-def error_bars_macro(node, infile, outfile, xaxiscols, yaxiscol, low_percentile, high_percentile):
-
-    if len(sys.argv) != 7:
-        print "error: wrong number of arguments to", sys.argv[0]
-        sys.exit(1)
+def compute_percentiles_macro(node, infile, outfile, xaxiscols, yaxiscol, low_percentile, high_percentile):
 
     low_percentile = low_percentile / 100 if low_percentile >= 1 else low_percentile
     high_percentile = high_percentile / 100 if high_percentile >= 1 else high_percentile
 
+    print "starting ebars macro"
+
     data = dict()
     fin = open(infile, 'rb')
     reader = csv.reader(fin, delimiter=' ', quotechar='\"')
+
+    print "opened"
+
+    colnames = reader.next()
     for row in reader:
         label = ""
-        for axis in xaxiscols:
-            label += row[axis] + ", "
+        for col in xaxiscols:
+            label += row[colnames.index(col) -1] + ", "
         label = label[:-2]
         if label not in data:
             data[label] = []
-        data[label] += [row[yaxiscol]]
-    reader.close()
+        data[label] += [float(row[colnames.index(yaxiscol) -1])]
+    fin.close()
+
+    print "read"
 
     fout = open(os.path.join(node.exp_results, outfile), 'w')
-    for (label, values) in data.items():
+    writer = csv.writer(fout, delimiter=' ', quotechar='\"', quoting=csv.QUOTE_MINIMAL)
+    for (idx, (label, values)) in enumerate(sorted(data.items())):
         s = sorted(values)
         bottom = s[int(len(s) * low_percentile)]
-        top = s[int(len(s) * high-percentile)]
+        top = s[int(len(s) * high_percentile)]
         med = s[int(len(s) * 0.5)]
-        fout.write(str(label) + " " + str(med) + " " + str(bottom) + " " + str(top) + "\n")
+        writer.writerow(idx, label, med, bottom, top)
+
+    print "written"
     fout.close()
 
 
@@ -121,7 +129,7 @@ def evaluate(macro_str, node):
         print 'Unknown macro:{}. Aborting.'.format(macro_str)
         exit(1)
         
-    # always pass the current node as the implicit first parameter
+    print "running macro", macro_str
     eval(macro_str.replace('(', '(node, ', 1))
     
     return 0          
