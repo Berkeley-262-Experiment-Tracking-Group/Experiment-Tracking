@@ -8,6 +8,9 @@ import special_macros
 # TODO: distinguish different failure modes
 [RUN_STATE_VIRGIN, RUN_STATE_RUNNING, RUN_STATE_SUCCESS, RUN_STATE_FAIL] = range(4) 
 
+# TODO: make this a command-line option
+MAX_PROCESSES = 2
+
 
 def save_descr(path, info):
     """Save info about an experiment to a file
@@ -74,9 +77,13 @@ class dag:
                     node.clean_up_run()
                 
     def run_runnable_jobs(self):
+        running = 0
         for node in self.dag_nodes:
-            if node.is_runnable():
+            if node.info["run_state"] == RUN_STATE_RUNNING:
+                running += 1
+            if node.is_runnable() and running < MAX_PROCESSES:
                 node.run(self.backend)
+                running += 1
 
     def finished_running(self):
         for node in self.dag_nodes:
@@ -168,12 +175,24 @@ class dag_node:
                 self.exp_results = os.path.join(self.resultsdir, self.hsh)
                 self.expdir = os.path.join(rootdir, exp_common.EXP_DIR, self.hsh)
                 self.new_cmd = self.new_cmd.replace('{}', self.exp_results)
+                self.new_code=None
             else:
+
+                # terrible terrible hack to prevent parameter
+                # substitution for macros (since this syntax
+                # interferes with Python list syntax). TODO: figure
+                # out whether this is actually a good idea (hint: no).
+                code = self.code.replace("[", "<---")
+                code = code.replace("]", "--->")
+                new_code, deps = exp_common.expand_command(code, self.params, self.parents)   
+                new_code = new_code.replace("<---", "[")
+                self.new_code = new_code.replace("--->", "]")
                 deps=[x.hsh for x in self.parents]
                 self.hsh = util.sha1(self.commit + str(len(self.working_dir)) +
-                                 self.working_dir + str(len(self.code)))
+                                 self.working_dir + str(len(self.code)) + self.new_code + repr(deps))
                 self.exp_results = os.path.join(self.resultsdir, self.hsh)
                 self.expdir = os.path.join(rootdir, exp_common.EXP_DIR, self.hsh)
+                self.new_code = self.new_code.replace('{}', self.exp_results)
                 self.new_cmd=None
             
             # try to read run info from disk
@@ -185,16 +204,13 @@ class dag_node:
                 print "Error: could not load experiment %s." % (self.hsh)
                 exit(1)
             self.new_cmd = self.info['final_command']
+            self.new_cmd = self.info['final_code']
             self.deps = self.info['deps'] 
             #exp_common.expand_command(self.info["command"], self.info["params"], self.deps())   
             self.desc = self.info['description']
             self.exp_results = os.path.join(self.resultsdir, self.hsh)
             self.expdir = os.path.join(rootdir, exp_common.EXP_DIR, self.hsh)
 
-	
-      	
-
-	
 
         # if not found, intialize from scratch
         if self.info is None:
@@ -218,6 +234,7 @@ class dag_node:
             self.info['return_code'] = None
             
             self.info['final_command']=self.new_cmd
+            self.info['final_code']=self.new_code
         else:
             if self.info['description'] != self.desc:
                 print "Warning: job description '%s' differs from " \
@@ -254,18 +271,7 @@ class dag_node:
         parents_succeeded = all([p.info['run_state'] == RUN_STATE_SUCCESS for p in self.parents])
         return self.info['run_state'] == RUN_STATE_VIRGIN and parents_succeeded
 
-    def fill_in_dependencies(self):
-	#Empty function. Fill in self.new_cmd based on the hashes of parents. Basically replace "expname" by "resultsdir/hash" or sth
-        pass
-
-
     def setup_env(self):
-        # Most of this copied from exp.py. exp.py has loads of other stuff that might require figuring out
-	# Since the experiment has not been run before, assuming the corresponding directories
-	# don't exist
-        
-	# fill in dependencies in newcmd. Big TODO
-	# self.new_cmd=self.fill_in_dependencies();
 
 	# Create experiments directory if it doesn't exist
 	if not os.path.isdir(os.path.join(self.rootdir, exp_common.EXP_DIR)):
@@ -316,9 +322,10 @@ class dag_node:
         if self.info['code'] is not None:
             try:
                 print 'Running code'
-                self.info['return_code'] = special_macros.evaluate(self.info['code'], self)
+                self.info['return_code'] = special_macros.evaluate(self.new_code, self)
                 self.info['run_state'] = RUN_STATE_SUCCESS
-            except:
+            except Exception as e:
+                print e
                 self.info['run_state'] = RUN_STATE_FAIL
         else:
             self.jobid = black_box.run(self)
